@@ -395,3 +395,73 @@ class ToTensor:
         im = im.half() if self.half else im.float()  # uint8 to fp16/32
         im /= 255.0  # 0-255 to 0.0-1.0
         return im
+
+
+
+
+
+#add by xuqing
+def gt_flipud(t):
+    c,p0,p1,p2 =  np.split(t , [1, 3, 5], axis=1)
+    p0[:,1]=1-p0[:,1]
+    p1[:,1]=1-p1[:,1]
+    p2[:,1]=1-p2[:,1]
+    p2=p0+p2-p1
+    t=np.concatenate([c,p1,p0,p2],axis=1)
+    return t
+
+def gt_fliplr(t):
+    c,p0,p1,p2 =  np.split(t , [1, 3, 5], axis=1)
+    p0[:,0]=1-p0[:,0]
+    p1[:,0]=1-p1[:,0]
+    p2[:,0]=1-p2[:,0]
+    p2=p0+p2-p1
+    t=np.concatenate([c,p1,p0,p2],axis=1)
+    return t
+
+def gt_rotate(t,oW,oH,nW, nH,M):
+    c,p0,p1,p2 =  np.split(t , [1, 3, 5], axis=1)
+    
+    tmp0 = np.zeros_like(p0)
+    tmp0[:,0]=(M[0,0]*p0[:,0]*oW+M[0,1]*p0[:,1]*oH+1*M[0,2])/nW
+    tmp0[:,1]=(M[1,0]*p0[:,0]*oW+M[1,1]*p0[:,1]*oH+1*M[1,2])/nH
+    p0=tmp0
+    
+    tmp1 = np.zeros_like(p1)  
+    tmp1[:,0]=(M[0,0]*p1[:,0]*oW+M[0,1]*p1[:,1]*oH+1*M[0,2])/nW
+    tmp1[:,1]=(M[1,0]*p1[:,0]*oW+M[1,1]*p1[:,1]*oH+1*M[1,2])/nH
+    p1=tmp1
+
+    tmp2 = np.zeros_like(p2)
+    tmp2[:,0]=(M[0,0]*p2[:,0]*oW+M[0,1]*p2[:,1]*oH+1*M[0,2])/nW
+    tmp2[:,1]=(M[1,0]*p2[:,0]*oW+M[1,1]*p2[:,1]*oH+1*M[1,2])/nH
+    p2=tmp2
+    return np.concatenate([c,p0,p1,p2],axis=1)
+
+def rotate_bound(image, angle):
+    # grab the dimensions of the image and then determine the
+    # center
+    (h, w) = image.shape[:2]
+    (cX, cY) = (w // 2, h // 2)
+ 
+    # grab the rotation matrix (applying the negative of the
+    # angle to rotate clockwise), then grab the sine and cosine
+    # (i.e., the rotation components of the matrix)
+    M = cv2.getRotationMatrix2D((cX, cY), -angle, 1.0)
+
+    cos = np.abs(M[0, 0])
+    sin = np.abs(M[0, 1])
+ 
+    if 0: 
+        nW = w#int((h * sin) + (w * cos))
+        nH = h#int((h * cos) + (w * sin))
+    else:
+        # compute the new bounding dimensions of the image
+        nW = int((h * sin) + (w * cos))
+        nH = int((h * cos) + (w * sin))
+        # adjust the rotation matrix to take into account translation
+        M[0, 2] += (nW / 2) - cX
+        M[1, 2] += (nH / 2) - cY
+
+    # perform the actual rotation and return the image
+    return cv2.warpAffine(image, M, (nW, nH)),nW, nH,M    
