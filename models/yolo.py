@@ -44,7 +44,7 @@ class Detect(nn.Module):
     def __init__(self, nc=80, anchors=(), ch=(), inplace=True):  # detection layer
         super().__init__()
         self.nc = nc  # number of classes
-        self.no = nc + 5  # number of outputs per anchor
+        self.no = nc + 8  # number of outputs per anchor # 8 = x y len cos1 sin1 cos2 sin2 obj
         self.nl = len(anchors)  # number of detection layers
         self.na = len(anchors[0]) // 2  # number of anchors
         self.grid = [torch.empty(0) for _ in range(self.nl)]  # init grid
@@ -70,10 +70,15 @@ class Detect(nn.Module):
                     wh = (wh.sigmoid() * 2) ** 2 * self.anchor_grid[i]  # wh
                     y = torch.cat((xy, wh, conf.sigmoid(), mask), 4)
                 else:  # Detect (boxes only)
-                    xy, wh, conf = x[i].sigmoid().split((2, 2, self.nc + 1), 4)
-                    xy = (xy * 2 + self.grid[i]) * self.stride[i]  # xy
-                    wh = (wh * 2) ** 2 * self.anchor_grid[i]  # wh
-                    y = torch.cat((xy, wh, conf), 4)
+                    xy, len, c1s1c2s2, objcls1cls2 = x[i].split((2, 1, 4, self.nc + 1), 4)
+                    xy = (xy.sigmoid() * 2 + self.grid[i]) * self.stride[i]  # xy
+                    len = len.sigmoid()
+                    c1s1c2s2 = c1s1c2s2.tanh()
+                    objcls1cls2 = objcls1cls2.sigmoid()
+                    #xy, wh, conf = x[i].sigmoid().split((2, 2, self.nc + 1), 4)
+                    #xy = (xy * 2 + self.grid[i]) * self.stride[i]  # xy
+                    #wh = (wh * 2) ** 2 * self.anchor_grid[i]  # wh
+                    y = torch.cat((xy, len, c1s1c2s2, objcls1cls2), 4)
                 z.append(y.view(bs, self.na * nx * ny, self.no))
 
         return x if self.training else (torch.cat(z, 1),) if self.export else (torch.cat(z, 1), x)
