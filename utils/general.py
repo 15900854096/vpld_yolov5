@@ -805,9 +805,9 @@ def scale_boxes(img1_shape, boxes, img0_shape, ratio_pad=None):
         gain = ratio_pad[0][0]
         pad = ratio_pad[1]
 
-    boxes[..., [0, 2]] -= pad[0]  # x padding
-    boxes[..., [1, 3]] -= pad[1]  # y padding
-    boxes[..., :4] /= gain
+    boxes[..., [0]] -= pad[0]  # x padding
+    boxes[..., [1]] -= pad[1]  # y padding
+    boxes[..., :2] /= gain
     clip_boxes(boxes, img0_shape)
     return boxes
 
@@ -836,11 +836,9 @@ def clip_boxes(boxes, shape):
     if isinstance(boxes, torch.Tensor):  # faster individually
         boxes[..., 0].clamp_(0, shape[1])  # x1
         boxes[..., 1].clamp_(0, shape[0])  # y1
-        boxes[..., 2].clamp_(0, shape[1])  # x2
-        boxes[..., 3].clamp_(0, shape[0])  # y2
     else:  # np.array (faster grouped)
-        boxes[..., [0, 2]] = boxes[..., [0, 2]].clip(0, shape[1])  # x1, x2
-        boxes[..., [1, 3]] = boxes[..., [1, 3]].clip(0, shape[0])  # y1, y2
+        boxes[..., [0]] = boxes[..., [0]].clip(0, shape[1])  # x1, x2
+        boxes[..., [1]] = boxes[..., [1]].clip(0, shape[0])  # y1, y2
 
 
 def clip_segments(segments, shape):
@@ -864,6 +862,9 @@ def non_max_suppression(
         max_det=300,
         nm=0,  # number of masks
 ):
+    #           0 1  2   3    4    5    6    7   8    9
+    #prediction:x y len cos1 sin1 cos2 sin2 obj cls1 cls2
+    
     """Non-Maximum Suppression (NMS) on inference results to reject overlapping detections
 
     Returns:
@@ -881,8 +882,8 @@ def non_max_suppression(
     if mps:  # MPS not fully supported yet, convert tensors to CPU before NMS
         prediction = prediction.cpu()
     bs = prediction.shape[0]  # batch size
-    nc = prediction.shape[2] - nm - 5  # number of classes
-    xc = prediction[..., 4] > conf_thres  # candidates
+    nc = prediction.shape[2] - nm - 8  # number of classes
+    xc = prediction[..., 7] > conf_thres  # candidates
 
     # Settings
     # min_wh = 2  # (pixels) minimum box width and height
@@ -894,15 +895,15 @@ def non_max_suppression(
     merge = False  # use merge-NMS
 
     t = time.time()
-    mi = 5 + nc  # mask start index
-    output = [torch.zeros((0, 6 + nm), device=prediction.device)] * bs
+    mi = 8 + nc  # mask start index
+    output = [torch.zeros((0, 9 + nm), device=prediction.device)] * bs
     for xi, x in enumerate(prediction):  # image index, image inference
         # Apply constraints
         # x[((x[..., 2:4] < min_wh) | (x[..., 2:4] > max_wh)).any(1), 4] = 0  # width-height
         x = x[xc[xi]]  # confidence
 
         # Cat apriori labels if autolabelling
-        if labels and len(labels[xi]):
+        if labels and len(labels[xi]):#not use this select
             lb = labels[xi]
             v = torch.zeros((len(lb), nc + nm + 5), device=x.device)
             v[:, :4] = lb[:, 1:5]  # box
@@ -915,23 +916,32 @@ def non_max_suppression(
             continue
 
         # Compute conf
-        x[:, 5:] *= x[:, 4:5]  # conf = obj_conf * cls_conf
+        x[:, 8:] *= x[:, 7:8]  # conf = obj_conf * cls_conf
 
+        '''
         # Box/Mask
         box = xywh2xyxy(x[:, :4])  # center_x, center_y, width, height) to (x1, y1, x2, y2)
         mask = x[:, mi:]  # zero columns if no masks
 
         # Detections matrix nx6 (xyxy, conf, cls)
         if multi_label:
-            i, j = (x[:, 5:mi] > conf_thres).nonzero(as_tuple=False).T
-            x = torch.cat((box[i], x[i, 5 + j, None], j[:, None].float(), mask[i]), 1)
+            i, j = (x[:, 8:mi] > conf_thres).nonzero(as_tuple=False).T
+            x = torch.cat((box[i], x[i, 8 + j, None], j[:, None].float(), mask[i]), 1)
         else:  # best class only
-            conf, j = x[:, 5:mi].max(1, keepdim=True)
+            conf, j = x[:, 8:mi].max(1, keepdim=True)
             x = torch.cat((box, conf, j.float(), mask), 1)[conf.view(-1) > conf_thres]
-
+        '''
+        
+        box = x[:, :7]
+        mask = x[:, mi:]
+        conf, j = x[:, 8:mi].max(1, keepdim=True)
+        x = torch.cat((box, conf, j.float(), mask), 1)[conf.view(-1) > conf_thres] 
+        # 0 1  2   3  4  5  6  7    8
+        # x y len c1 s1 c2 s2 conf cls
+            
         # Filter by class
         if classes is not None:
-            x = x[(x[:, 5:6] == torch.tensor(classes, device=x.device)).any(1)]
+            x = x[(x[:, 8:9] == torch.tensor(classes, device=x.device)).any(1)]
 
         # Apply finite constraint
         # if not torch.isfinite(x).all():
@@ -941,14 +951,14 @@ def non_max_suppression(
         n = x.shape[0]  # number of boxes
         if not n:  # no boxes
             continue
-        x = x[x[:, 4].argsort(descending=True)[:max_nms]]  # sort by confidence and remove excess boxes
+        x = x[x[:, 7].argsort(descending=True)[:max_nms]]  # sort by confidence and remove excess boxes
 
         # Batched NMS
-        c = x[:, 5:6] * (0 if agnostic else max_wh)  # classes
-        boxes, scores = x[:, :4] + c, x[:, 4]  # boxes (offset by class), scores
-        i = torchvision.ops.nms(boxes, scores, iou_thres)  # NMS
+        c = x[:, 8:9] * (0 if agnostic else max_wh)  # classes
+        boxes, scores = x[:, :7] + c, x[:, 8]  # boxes (offset by class), scores
+        i = nms(boxes, iou_thres) # torchvision.ops.nms(boxes, scores, iou_thres)  # NMS
         i = i[:max_det]  # limit detections
-        if merge and (1 < n < 3E3):  # Merge NMS (boxes merged using weighted mean)
+        if merge and (1 < n < 3E3):  # Merge NMS (boxes merged using weighted mean)  # never use it
             # update boxes as boxes(i,4) = weights(i,n) * boxes(n,4)
             iou = box_iou(boxes[i], boxes) > iou_thres  # iou matrix
             weights = iou * scores[None]  # box weights
@@ -1106,3 +1116,57 @@ if Path(inspect.stack()[0].filename).parent.parent.as_posix() in inspect.stack()
     cv2.imread, cv2.imwrite, cv2.imshow = imread, imwrite, imshow  # redefine
 
 # Variables ------------------------------------------------------------------------------------------------------------
+
+import shapely
+from shapely.geometry import Polygon, MultiPoint
+def bbox_iou_eval(box1, box2):
+    box1 = np.array(box1).reshape(4, 2)  # 四边形二维坐标表示
+    # python四边形对象，会自动计算四个点，并将四个点重新排列成
+    # 左上，左下，右下，右上，左上（没错左上排了两遍）
+    poly1 = Polygon(box1).convex_hull
+    box2 = np.array(box2).reshape(4, 2)
+    poly2 = Polygon(box2).convex_hull
+    if not poly1.intersects(poly2):  # 如果两四边形不相交
+        iou = 0
+    else:
+        try:
+            inter_area = poly1.intersection(poly2).area  # 相交面积
+            iou = float(inter_area) / (poly1.area + poly2.area - inter_area)
+        except shapely.geos.TopologicalError:
+            print('shapely.geos.TopologicalError occured, iou set to 0')
+            iou = 0
+    return iou
+
+def nms(boxes,nms_thresh):
+    #           0 1  2   3    4    5    6  
+    #prediction:x y len cos1 sin1 cos2 sin2 
+    tmp = torch.zeros(boxes.shape[0],8)
+    tmp[:,0:1] = boxes[:,0:1] # x1
+    tmp[:,1:2] = boxes[:,1:2] # y1
+    
+    tmp[:,2:3] = tmp[:,0:1] + boxes[:,2:3] * boxes[:,3:4] * 640 # x2
+    tmp[:,3:4] = tmp[:,1:2] + boxes[:,2:3] * boxes[:,4:5] * 640 # y2
+    
+    tmp[:,4:5] = tmp[:,2:3] + boxes[:,5:6] * 640 * 0.25 # x3
+    tmp[:,5:6] = tmp[:,3:4] + boxes[:,6:7] * 640 * 0.25 # y3
+    
+    tmp[:,6:7] = tmp[:,0:1] + tmp[:,4:5] - tmp[:,2:3] # x4
+    tmp[:,7:8] = tmp[:,1:2] + tmp[:,5:6] - tmp[:,3:4] # y4
+    
+    boxes = tmp
+    
+    keep_indices = []
+    # 从大到小
+    order = np.arange(0,boxes.shape[0])
+    while order.shape[0] > 0:
+        i = order[0]
+        keep_indices.append(i)
+        not_overlaps = []
+        for j in range(len(order)):
+            if order[j] != i:
+                iou = bbox_iou_eval(boxes[i],boxes[order[j]])
+                if iou < nms_thresh:
+                    not_overlaps.append(j)
+        order = order[not_overlaps]
+    keep_boxes = boxes[[i.item() for i in keep_indices]]
+    return keep_indices
