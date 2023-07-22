@@ -359,7 +359,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             callbacks.run('on_train_epoch_end', epoch=epoch)
             ema.update_attr(model, include=['yaml', 'nc', 'hyp', 'names', 'stride', 'class_weights'])
             final_epoch = (epoch + 1 == epochs) or stopper.possible_stop
-            if not noval or final_epoch:  # Calculate mAP
+            if ((not noval or final_epoch) and (epoch > 0.5*epochs) and (epoch%4 == 0)):  # Calculate mAP
                 results, maps, _ = validate.run(data_dict,
                                                 batch_size=batch_size // WORLD_SIZE * 2,
                                                 imgsz=imgsz,
@@ -381,6 +381,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             callbacks.run('on_fit_epoch_end', log_vals, epoch, best_fitness, fi)
 
             if (epoch % 20 == 0):
+                ckpt = {'epoch': epoch,'best_fitness': best_fitness,'model': deepcopy(de_parallel(model)).half(),'ema': deepcopy(ema.ema).half(),'updates': ema.updates,'optimizer': optimizer.state_dict(),'opt': vars(opt),'git': GIT_INFO,'date': datetime.now().isoformat()}
                 print("#######################   ", epoch, ":", loss)
                 torch.save(ckpt, w / ('last_%d.pt'%epoch))
             # Save model

@@ -139,7 +139,15 @@ class ComputeLoss:
                 pxy = pxy.sigmoid() * 2 - 0.5
                 pwh = torch.cat( ( pwh[:,0:1].sigmoid() , pwh[:,1:].tanh() ) , dim=1 ) 
                 pbox = torch.cat((pxy, pwh), 1)  # predicted box
-                lbox += self.MSEwh(pbox, tbox[i])
+                
+                if 0:
+                    lbox += self.MSEwh(pbox, tbox[i])
+                else:
+                    lossxy = self.MSEwh(pbox[:,0:2], tbox[i][:,0:2])
+                    losslen = self.MSEwh(pbox[:,2:3], tbox[i][:,2:3])
+                    lossthe = self.MSEwh(pbox[:,3:], tbox[i][:,3:])
+                    lbox += lossxy * 0.8 + losslen * 1 + lossthe * 1.2
+                
                 #iou = bbox_iou(pbox, tbox[i], CIoU=True).squeeze()  # iou(prediction, target)
                 #lbox += (1.0 - iou).mean()  # iou loss
 

@@ -102,7 +102,7 @@ def run(
         weights=None,  # model.pt path(s)
         batch_size=32,  # batch size
         imgsz=640,  # inference size (pixels)
-        conf_thres=0.001,  # confidence threshold
+        conf_thres=0.45, #0.001,  # confidence threshold
         iou_thres=0.6,  # NMS IoU threshold
         max_det=300,  # maximum detections per image
         task='val',  # train, val, test, speed or study
@@ -190,7 +190,7 @@ def run(
         names = dict(enumerate(names))
     class_map = coco80_to_coco91_class() if is_coco else list(range(1000))
     s = ('%22s' + '%11s' * 7) % ('Class', 'Images', 'Instances', 'P', 'R', 'mAP50', 'mAP95', 'mAP50-95')
-    tp, fp, p, r, f1, mp, mr, map50, ap50, map = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+    tp, fp, p, r, f1, mp, mr, map50, ap50, map95, ap95, map = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     dt = Profile(), Profile(), Profile()  # profiling times
     loss = torch.zeros(3, device=device)
     jdict, stats, ap, ap_class = [], [], [], []
@@ -268,8 +268,8 @@ def run(
             tmp[:,6:7] = predn[:,7:8]
             tmp[:,7:8] = predn[:,8:9]
             predn = tmp
-            # 0   1  2  3  4  5  6    7    base_600
-            # x1 y1 x2 y2 x3 y3 conf cls
+            # 0   1  2  3  4  5  6    7    
+            # x1 y1 x2 y2 x3 y3 conf cls  base_600
             
             #          0    1  2  3  4  5  6
             #lebels: label x1 y1 x2 y2 x3 y3  base_600
@@ -283,6 +283,8 @@ def run(
                 #scale_boxes(im[si].shape[1:], tbox, shape, shapes[si][1])  # native-space labels  #base_640 to base_600
                 #labelsn = torch.cat((labels[:, 0:1], tbox), 1)  # native-space labels #lebels: label x1 y1 x2 y2 x3 y3
                 labelsn = labels
+                #predn:   x1 y1 x2 y2 x3 y3 conf cls  base_600
+                #lebels: label x1 y1 x2 y2 x3 y3  base_600
                 correct = process_batch(predn, labelsn, iouv)
                 if plots:
                     confusion_matrix.process_batch(predn, labelsn)
