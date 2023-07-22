@@ -136,6 +136,8 @@ def run(
 
         # Process predictions
         for i, det in enumerate(pred):  # per image
+            #     0 1  2   3    4    5    6    7    8
+            #det: x y len cos1 sin1 cos2 sin2 conf cls
             seen += 1
             if webcam:  # batch_size >= 1
                 p, im0, frame = path[i], im0s[i].copy(), dataset.count
@@ -149,33 +151,42 @@ def run(
             s += '%gx%g ' % im.shape[2:]  # print string
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
             imc = im0.copy() if save_crop else im0  # for save_crop
-            annotator = Annotator(im0, line_width=line_thickness, example=str(names))
+            #annotator = Annotator(im0, line_width=line_thickness, example=str(names))
             if len(det):
                 # Rescale boxes from img_size to im0 size
-                det[:, :4] = scale_boxes(im.shape[2:], det[:, :4], im0.shape).round()
+                det[:, :2] = scale_boxes(im.shape[2:], det[:, :2], im0.shape).round() #base_640 to base_600
 
                 # Print results
-                for c in det[:, 5].unique():
-                    n = (det[:, 5] == c).sum()  # detections per class
+                for c in det[:, 8].unique():
+                    n = (det[:, 8] == c).sum()  # detections per class
                     s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
 
                 # Write results
-                for *xyxy, conf, cls in reversed(det):
-                    if save_txt:  # Write to file
-                        xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
-                        line = (cls, *xywh, conf) if save_conf else (cls, *xywh)  # label format
-                        with open(f'{txt_path}.txt', 'a') as f:
-                            f.write(('%g ' * len(line)).rstrip() % line + '\n')
+                for *xylenc1s1c2s2, conf, cls in reversed(det):
+                    #if save_txt:  # Write to file
+                    #    xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
+                    #    line = (cls, *xywh, conf) if save_conf else (cls, *xywh)  # label format
+                    #    with open(f'{txt_path}.txt', 'a') as f:
+                    #        f.write(('%g ' * len(line)).rstrip() % line + '\n')
 
                     if save_img or save_crop or view_img:  # Add bbox to image
-                        c = int(cls)  # integer class
-                        label = None if hide_labels else (names[c] if hide_conf else f'{names[c]} {conf:.2f}')
-                        annotator.box_label(xyxy, label, color=colors(c, True))
-                    if save_crop:
-                        save_one_box(xyxy, imc, file=save_dir / 'crops' / names[c] / f'{p.stem}.jpg', BGR=True)
+                        x,y,leng,c1,s1,c2,s2 = xylenc1s1c2s2
+                        h,w,c = im0.shape
+                        leng = leng*w
+                        p1 = (round(float(x)) , round(float(y)))
+                        p2 = (round(float(x+leng*c1)) , round(float(y+leng*s1)))
+                        p3 = (round(float(x+leng*c1+100*c2)) , round(float(y+leng*s1+100*s2)))
+                        cv2.arrowedLine(im0, p1, p2, (0,255,0), 2, 4)
+                        cv2.arrowedLine(im0, p2, p3, (0,255,0), 2, 4)                        
+                        
+                        #c = int(cls)  # integer class
+                        #label = None if hide_labels else (names[c] if hide_conf else f'{names[c]} {conf:.2f}')
+                        #annotator.box_label(xyxy, label, color=colors(c, True))
+                    #if save_crop:
+                    #    save_one_box(xyxy, imc, file=save_dir / 'crops' / names[c] / f'{p.stem}.jpg', BGR=True)
 
             # Stream results
-            im0 = annotator.result()
+            #im0 = annotator.result()
             if view_img:
                 if platform.system() == 'Linux' and p not in windows:
                     windows.append(p)

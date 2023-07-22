@@ -42,7 +42,7 @@ from utils.dataloaders import create_dataloader
 from utils.general import (LOGGER, TQDM_BAR_FORMAT, Profile, check_dataset, check_img_size, check_requirements,
                            check_yaml, coco80_to_coco91_class, colorstr, increment_path, non_max_suppression,
                            print_args, scale_boxes, xywh2xyxy, xyxy2xywh)
-from utils.metrics import ConfusionMatrix, ap_per_class, box_iou
+from utils.metrics import ConfusionMatrix, ap_per_class, box_iou, box_iou_poly
 from utils.plots import output_to_target, plot_images, plot_val_study
 from utils.torch_utils import select_device, smart_inference_mode
 
@@ -74,14 +74,15 @@ def process_batch(detections, labels, iouv):
     """
     Return correct prediction matrix
     Arguments:
-        detections (array[N, 6]), x1, y1, x2, y2, conf, class
-        labels (array[M, 5]), class, x1, y1, x2, y2
+        detections (array[N, 8]), x1, y1, x2, y2, x3, y3, conf, class
+        labels (array[M, 7]), class, x1, y1, x2, y2, x3, y3
     Returns:
         correct (array[N, 10]), for 10 IoU levels
     """
     correct = np.zeros((detections.shape[0], iouv.shape[0])).astype(bool)
-    iou = box_iou(labels[:, 1:], detections[:, :4])
-    correct_class = labels[:, 0:1] == detections[:, 5]
+    #iou = box_iou(labels[:, 1:], detections[:, :6])
+    iou = box_iou_poly(labels[:, 1:], detections[:, :6])
+    correct_class = labels[:, 0:1] == detections[:, 7]
     for i in range(len(iouv)):
         x = torch.where((iou >= iouv[i]) & correct_class)  # IoU > threshold and classes match
         if x[0].shape[0]:
@@ -161,7 +162,7 @@ def run(
     is_coco = isinstance(data.get('val'), str) and data['val'].endswith(f'coco{os.sep}val2017.txt')  # COCO dataset
     nc = 1 if single_cls else int(data['nc'])  # number of classes
     iouv = torch.linspace(0.5, 0.95, 10, device=device)  # iou vector for mAP@0.5:0.95
-    niou = iouv.numel()
+    niou = iouv.numel() #niou=10
 
     # Dataloader
     if not training:
@@ -188,7 +189,7 @@ def run(
     if isinstance(names, (list, tuple)):  # old format
         names = dict(enumerate(names))
     class_map = coco80_to_coco91_class() if is_coco else list(range(1000))
-    s = ('%22s' + '%11s' * 6) % ('Class', 'Images', 'Instances', 'P', 'R', 'mAP50', 'mAP50-95')
+    s = ('%22s' + '%11s' * 7) % ('Class', 'Images', 'Instances', 'P', 'R', 'mAP50', 'mAP95', 'mAP50-95')
     tp, fp, p, r, f1, mp, mr, map50, ap50, map = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     dt = Profile(), Profile(), Profile()  # profiling times
     loss = torch.zeros(3, device=device)
@@ -214,9 +215,12 @@ def run(
             loss += compute_loss(train_out, targets)[1]  # box, obj, cls
 
         # NMS
-        targets[:, 2:] *= torch.tensor((width, height, width, height), device=device)  # to pixels
+        #targets: img_id cls x1 y1 x2 y2 x3 y3
+        #targets[:, 2:] *= torch.tensor((shapes[si][0][0], shapes[si][0][0], shapes[si][0][0], shapes[si][0][0], shapes[si][0][0], shapes[si][0][0]), device=device)  # to pixels #base_600
         lb = [targets[targets[:, 0] == i, 1:] for i in range(nb)] if save_hybrid else []  # for autolabelling
         with dt[2]:
+            # 0 1  2   3  4  5  6  7   8    9 
+            # x y len c1 s1 c2 s2 obj cls1 cls2
             preds = non_max_suppression(preds,
                                         conf_thres,
                                         iou_thres,
@@ -224,10 +228,12 @@ def run(
                                         multi_label=True,
                                         agnostic=single_cls,
                                         max_det=max_det)
-
+            # 0 1  2   3  4  5  6  7    8
+            # x y len c1 s1 c2 s2 conf cls  base_640
         # Metrics
         for si, pred in enumerate(preds):
-            labels = targets[targets[:, 0] == si, 1:]
+            labels = targets[targets[:, 0] == si, 1:] #lebels: label x1 y1 x2 y2 x3 y3  
+            labels[:, 1:] *= torch.tensor((shapes[si][0][0], shapes[si][0][0], shapes[si][0][0], shapes[si][0][0], shapes[si][0][0], shapes[si][0][0]), device=device)#lebels: label x1 y1 x2 y2 x3 y3  base_600
             nl, npr = labels.shape[0], pred.shape[0]  # number of labels, predictions
             path, shape = Path(paths[si]), shapes[si][0]
             correct = torch.zeros(npr, niou, dtype=torch.bool, device=device)  # init
@@ -242,19 +248,45 @@ def run(
 
             # Predictions
             if single_cls:
-                pred[:, 5] = 0
+                pred[:, 8] = 0
             predn = pred.clone()
-            scale_boxes(im[si].shape[1:], predn[:, :4], shape, shapes[si][1])  # native-space pred
-
+            scale_boxes(im[si].shape[1:], predn[:, :2], shape, shapes[si][1])  # native-space pred  ## base_640 to base_600
+            
+            
+            #translation
+            leng = 250
+            if(predn[0,2:3]*shapes[si][0][0]>200):
+                leng=100
+            # 0 1  2   3  4  5  6  7    8
+            # x y len c1 s1 c2 s2 conf cls
+            tmp=torch.zeros(predn.shape[0],8,device=device)
+            tmp[:,:2] = predn[:,:2]
+            tmp[:,2:3] = tmp[:,0:1] + predn[:,2:3]*shapes[si][0][0]*predn[:,3:4]
+            tmp[:,3:4] = tmp[:,1:2] + predn[:,2:3]*shapes[si][0][1]*predn[:,4:5]
+            tmp[:,4:5] = tmp[:,2:3] + leng*predn[:,5:6]
+            tmp[:,5:6] = tmp[:,3:4] + leng*predn[:,6:7]
+            tmp[:,6:7] = predn[:,7:8]
+            tmp[:,7:8] = predn[:,8:9]
+            predn = tmp
+            # 0   1  2  3  4  5  6    7    base_600
+            # x1 y1 x2 y2 x3 y3 conf cls
+            
+            #          0    1  2  3  4  5  6
+            #lebels: label x1 y1 x2 y2 x3 y3  base_600
+            labels[:,5:6] = (labels[:,5:6] - labels[:,3:4])/100.0*leng + labels[:,3:4]
+            labels[:,6:7] = (labels[:,6:7] - labels[:,4:5])/100.0*leng + labels[:,4:5]
+            
+            
             # Evaluate
             if nl:
-                tbox = xywh2xyxy(labels[:, 1:5])  # target boxes
-                scale_boxes(im[si].shape[1:], tbox, shape, shapes[si][1])  # native-space labels
-                labelsn = torch.cat((labels[:, 0:1], tbox), 1)  # native-space labels
+                #tbox = xywh2xyxy(labels[:, 1:5])  # target boxes
+                #scale_boxes(im[si].shape[1:], tbox, shape, shapes[si][1])  # native-space labels  #base_640 to base_600
+                #labelsn = torch.cat((labels[:, 0:1], tbox), 1)  # native-space labels #lebels: label x1 y1 x2 y2 x3 y3
+                labelsn = labels
                 correct = process_batch(predn, labelsn, iouv)
                 if plots:
                     confusion_matrix.process_batch(predn, labelsn)
-            stats.append((correct, pred[:, 4], pred[:, 5], labels[:, 0]))  # (correct, conf, pcls, tcls)
+            stats.append((correct, pred[:, 7], pred[:, 8], labels[:, 0]))  # (correct, conf, pcls, tcls)
 
             # Save/log
             if save_txt:
@@ -274,20 +306,20 @@ def run(
     stats = [torch.cat(x, 0).cpu().numpy() for x in zip(*stats)]  # to numpy
     if len(stats) and stats[0].any():
         tp, fp, p, r, f1, ap, ap_class = ap_per_class(*stats, plot=plots, save_dir=save_dir, names=names)
-        ap50, ap = ap[:, 0], ap.mean(1)  # AP@0.5, AP@0.5:0.95
-        mp, mr, map50, map = p.mean(), r.mean(), ap50.mean(), ap.mean()
+        ap50, ap95, ap = ap[:, 0],ap[:, 9], ap.mean(1)  # AP@0.5, AP@0.5:0.95
+        mp, mr, map50, map95, map = p.mean(), r.mean(), ap50.mean(), ap95.mean(), ap.mean()
     nt = np.bincount(stats[3].astype(int), minlength=nc)  # number of targets per class
 
     # Print results
-    pf = '%22s' + '%11i' * 2 + '%11.3g' * 4  # print format
-    LOGGER.info(pf % ('all', seen, nt.sum(), mp, mr, map50, map))
+    pf = '%22s' + '%11i' * 2 + '%11.3g' * 5  # print format
+    LOGGER.info(pf % ('all', seen, nt.sum(), mp, mr, map50, map95, map))
     if nt.sum() == 0:
         LOGGER.warning(f'WARNING ⚠️ no labels found in {task} set, can not compute metrics without labels')
 
     # Print results per class
     if (verbose or (nc < 50 and not training)) and nc > 1 and len(stats):
         for i, c in enumerate(ap_class):
-            LOGGER.info(pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
+            LOGGER.info(pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap95[i], ap[i]))
 
     # Print speeds
     t = tuple(x.t / seen * 1E3 for x in dt)  # speeds per image
@@ -377,7 +409,7 @@ def main(opt):
             LOGGER.info(f'WARNING ⚠️ confidence threshold {opt.conf_thres} > 0.001 produces invalid results')
         if opt.save_hybrid:
             LOGGER.info('WARNING ⚠️ --save-hybrid will return high mAP from hybrid labels, not from predictions alone')
-        run(**vars(opt))
+        run(**vars(opt), plots=False)
 
     else:
         weights = opt.weights if isinstance(opt.weights, list) else [opt.weights]

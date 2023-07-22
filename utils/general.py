@@ -39,7 +39,7 @@ from ultralytics.yolo.utils.checks import check_requirements
 
 from utils import TryExcept, emojis
 from utils.downloads import curl_download, gsutil_getsize
-from utils.metrics import box_iou, fitness
+from utils.metrics import box_iou, fitness, bbox_iou_eval
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[1]  # YOLOv5 root directory
@@ -1117,30 +1117,10 @@ if Path(inspect.stack()[0].filename).parent.parent.as_posix() in inspect.stack()
 
 # Variables ------------------------------------------------------------------------------------------------------------
 
-import shapely
-from shapely.geometry import Polygon, MultiPoint
-def bbox_iou_eval(box1, box2):
-    box1 = np.array(box1).reshape(4, 2)  # 四边形二维坐标表示
-    # python四边形对象，会自动计算四个点，并将四个点重新排列成
-    # 左上，左下，右下，右上，左上（没错左上排了两遍）
-    poly1 = Polygon(box1).convex_hull
-    box2 = np.array(box2).reshape(4, 2)
-    poly2 = Polygon(box2).convex_hull
-    if not poly1.intersects(poly2):  # 如果两四边形不相交
-        iou = 0
-    else:
-        try:
-            inter_area = poly1.intersection(poly2).area  # 相交面积
-            iou = float(inter_area) / (poly1.area + poly2.area - inter_area)
-        except shapely.geos.TopologicalError:
-            print('shapely.geos.TopologicalError occured, iou set to 0')
-            iou = 0
-    return iou
-
 def nms(boxes,nms_thresh):
     #           0 1  2   3    4    5    6  
     #prediction:x y len cos1 sin1 cos2 sin2 
-    tmp = torch.zeros(boxes.shape[0],8)
+    tmp = torch.zeros(boxes.shape[0],8,device=boxes.device)
     tmp[:,0:1] = boxes[:,0:1] # x1
     tmp[:,1:2] = boxes[:,1:2] # y1
     

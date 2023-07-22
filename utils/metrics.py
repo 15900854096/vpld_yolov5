@@ -149,9 +149,9 @@ class ConfusionMatrix:
 
         detections = detections[detections[:, 4] > self.conf]
         gt_classes = labels[:, 0].int()
-        detection_classes = detections[:, 5].int()
-        iou = box_iou(labels[:, 1:], detections[:, :4])
-
+        detection_classes = detections[:, 7].int()
+        #iou = box_iou(labels[:, 1:], detections[:, :4])
+        iou = box_iou_poly(labels[:, 1:], detections[:, :6])
         x = torch.where(iou > self.iou_thres)
         if x[0].shape[0]:
             matches = torch.cat((torch.stack(x, 1), iou[x[0], x[1]][:, None]), 1).cpu().numpy()
@@ -358,3 +358,47 @@ def plot_mc_curve(px, py, save_dir=Path('mc_curve.png'), names=(), xlabel='Confi
     ax.set_title(f'{ylabel}-Confidence Curve')
     fig.savefig(save_dir, dpi=250)
     plt.close(fig)
+
+import shapely
+from shapely.geometry import Polygon, MultiPoint
+def bbox_iou_eval(box1, box2):
+    box1 = np.array(box1.cpu()).reshape(4, 2)  # 四边形二维坐标表示
+    # python四边形对象，会自动计算四个点，并将四个点重新排列成
+    # 左上，左下，右下，右上，左上（没错左上排了两遍）
+    poly1 = Polygon(box1).convex_hull
+    box2 = np.array(box2.cpu()).reshape(4, 2)
+    poly2 = Polygon(box2).convex_hull
+    if not poly1.intersects(poly2):  # 如果两四边形不相交
+        iou = 0
+    else:
+        try:
+            inter_area = poly1.intersection(poly2).area  # 相交面积
+            iou = float(inter_area) / (poly1.area + poly2.area - inter_area)
+        except shapely.geos.TopologicalError:
+            print('shapely.geos.TopologicalError occured, iou set to 0')
+            iou = 0
+    return iou
+
+def box_iou_poly(box1, box2, eps=1e-7):
+    # https://github.com/pytorch/vision/blob/master/torchvision/ops/boxes.py
+    """
+    Return intersection-over-union (Jaccard index) of boxes.
+    Both sets of boxes are expected to be in (x1, y1, x2, y2) format.
+    Arguments:
+        box1 (Tensor[N, 4])
+        box2 (Tensor[M, 4])
+    Returns:
+        iou (Tensor[N, M]): the NxM matrix containing the pairwise
+            IoU values for every element in boxes1 and boxes2
+    """
+    
+    N = box1.shape[0]
+    M = box2.shape[0]
+    tmp1=torch.cat((box1,box1[:,0:2]+box1[:,4:6]-box1[:,2:4]),1)
+    tmp2=torch.cat((box2,box2[:,0:2]+box2[:,4:6]-box2[:,2:4]),1)
+    
+    ioumat=torch.zeros((N,M),device = box1.device)
+    for i in range(N):
+        for j in range(M):
+            ioumat[i][j]=bbox_iou_eval(tmp1[i], tmp2[j])
+    return ioumat        
