@@ -186,8 +186,9 @@ def export_onnx(model, im, file, opset, dynamic, simplify, prefix=colorstr('ONNX
     for k, v in d.items():
         meta = model_onnx.metadata_props.add()
         meta.key, meta.value = k, str(v)
-    onnx.save(model_onnx, f)
-
+    #onnx.save(model_onnx, f)
+    onnx.save(onnx.shape_inference.infer_shapes(model_onnx),f)#add shape imformation
+    
     # Simplify
     if simplify:
         try:
