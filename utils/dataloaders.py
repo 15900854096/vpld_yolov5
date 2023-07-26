@@ -717,7 +717,7 @@ class LoadImagesAndLabels(Dataset):
             
             if random.random() < hyp['rotate']:
                 h,w,c = img.shape
-                ang = random.randint(-15, +15)
+                ang = random.randint(-20, +20)
                 img, neww, newh, M = rotate_bound(img,ang)
                 img = cv2.resize(img, (w, h), interpolation=cv2.INTER_LINEAR)
                 if nl:
