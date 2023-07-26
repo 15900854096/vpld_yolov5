@@ -273,8 +273,9 @@ def run(
             
             #          0    1  2  3  4  5  6
             #lebels: label x1 y1 x2 y2 x3 y3  base_600
-            labels[:,5:6] = (labels[:,5:6] - labels[:,3:4])/100.0*leng + labels[:,3:4]
-            labels[:,6:7] = (labels[:,6:7] - labels[:,4:5])/100.0*leng + labels[:,4:5]
+            oldleng = torch.sqrt((labels[:,5:6] - labels[:,3:4])** 2 + (labels[:,6:7] - labels[:,4:5])**2)
+            labels[:,5:6] = (labels[:,5:6] - labels[:,3:4])/oldleng*leng + labels[:,3:4]
+            labels[:,6:7] = (labels[:,6:7] - labels[:,4:5])/oldleng*leng + labels[:,4:5]
             
             
             # Evaluate
