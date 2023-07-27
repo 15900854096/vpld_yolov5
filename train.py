@@ -380,7 +380,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             log_vals = list(mloss) + list(results) + lr
             callbacks.run('on_fit_epoch_end', log_vals, epoch, best_fitness, fi)
 
-            if (epoch % 100 == 0):
+            if (epoch % 50 == 0):
                 ckpt = {'epoch': epoch,'best_fitness': best_fitness,'model': deepcopy(de_parallel(model)).half(),'ema': deepcopy(ema.ema).half(),'updates': ema.updates,'optimizer': optimizer.state_dict(),'opt': vars(opt),'git': GIT_INFO,'date': datetime.now().isoformat()}
                 print("#######################   ", epoch, ":", loss)
                 torch.save(ckpt, w / ('last_%d.pt'%epoch))

@@ -46,10 +46,10 @@ class Detect(nn.Module):
         self.nc = nc  # number of classes
         self.no = nc + 8  # number of outputs per anchor # 8 = x y len cos1 sin1 cos2 sin2 obj
         self.nl = len(anchors)  # number of detection layers
-        self.na = len(anchors[0]) // 2  # number of anchors
+        self.na = len(anchors[0])  #len(anchors[0]) // 2  # number of anchors only length hase anchor
         self.grid = [torch.empty(0) for _ in range(self.nl)]  # init grid
         self.anchor_grid = [torch.empty(0) for _ in range(self.nl)]  # init anchor grid
-        self.register_buffer('anchors', torch.tensor(anchors).float().view(self.nl, -1, 2))  # shape(nl,na,2)
+        self.register_buffer('anchors', torch.tensor(anchors).float().view(self.nl, -1, 1)) #view(self.nl, -1, 2)  # shape(nl,na,2)
         self.m = nn.ModuleList(nn.Conv2d(x, self.no * self.na, 1) for x in ch)  # output conv
         self.inplace = inplace  # use inplace ops (e.g. slice assignment)
 
@@ -72,7 +72,7 @@ class Detect(nn.Module):
                 else:  # Detect (boxes only)
                     xy, len, c1s1c2s2, objcls1cls2 = x[i].split((2, 1, 4, self.nc + 1), 4)
                     xy = (xy.sigmoid() * 2 + self.grid[i]) * self.stride[i]  # xy
-                    len = len.sigmoid()
+                    len = torch.exp(len) * self.anchor_grid[i]
                     c1s1c2s2 = c1s1c2s2.tanh()
                     objcls1cls2 = objcls1cls2.sigmoid()
                     #xy, wh, conf = x[i].sigmoid().split((2, 2, self.nc + 1), 4)
@@ -86,11 +86,12 @@ class Detect(nn.Module):
     def _make_grid(self, nx=20, ny=20, i=0, torch_1_10=check_version(torch.__version__, '1.10.0')):
         d = self.anchors[i].device
         t = self.anchors[i].dtype
-        shape = 1, self.na, ny, nx, 2  # grid shape
+        shape = 1, self.na, ny, nx, 2  # grid shape  xy shape
+        shape_ = 1, self.na, ny, nx, 1  # grid shape len shape
         y, x = torch.arange(ny, device=d, dtype=t), torch.arange(nx, device=d, dtype=t)
         yv, xv = torch.meshgrid(y, x, indexing='ij') if torch_1_10 else torch.meshgrid(y, x)  # torch>=0.7 compatibility
         grid = torch.stack((xv, yv), 2).expand(shape) - 0.5  # add grid offset, i.e. y = 2.0 * x - 0.5
-        anchor_grid = (self.anchors[i] * self.stride[i]).view((1, self.na, 1, 1, 2)).expand(shape)
+        anchor_grid = (self.anchors[i]).view((1, self.na, 1, 1, 1)).expand(shape_)
         return grid, anchor_grid
 
 
@@ -199,7 +200,7 @@ class DetectionModel(BaseModel):
             forward = lambda x: self.forward(x)[0] if isinstance(m, Segment) else self.forward(x)
             m.stride = torch.tensor([s / x.shape[-2] for x in forward(torch.zeros(1, ch, s, s))])  # forward
             check_anchor_order(m)
-            m.anchors /= m.stride.view(-1, 1, 1)
+            #m.anchors /= m.stride.view(-1, 1, 1)
             self.stride = m.stride
             self._initialize_biases()  # only run once
 
@@ -308,8 +309,8 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
     if act:
         Conv.default_act = eval(act)  # redefine default activation, i.e. Conv.default_act = nn.SiLU()
         LOGGER.info(f"{colorstr('activation:')} {act}")  # print
-    na = (len(anchors[0]) // 2) if isinstance(anchors, list) else anchors  # number of anchors
-    no = na * (nc + 5)  # number of outputs = anchors * (classes + 5)
+    na = (len(anchors[0])) if isinstance(anchors, list) else anchors  # number of anchors
+    no = na * (nc + 8)  # number of outputs = anchors * (classes + 8) x y len c1 s1 c2 s2 obj
 
     layers, save, c2 = [], [], ch[-1]  # layers, savelist, ch out
     for i, (f, n, m, args) in enumerate(d['backbone'] + d['head']):  # from, number, module, args
