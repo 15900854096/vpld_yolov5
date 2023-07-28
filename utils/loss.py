@@ -137,7 +137,7 @@ class ComputeLoss:
 
                 # Regression
                 pxy = pxy.sigmoid() * 2 - 0.5
-                pwh = torch.cat( ( pwh[:,0:1].sigmoid() , pwh[:,1:].tanh() ) , dim=1 ) 
+                pwh = torch.cat( (torch.exp(pwh[:,0:1]) * anchors[i] , pwh[:,1:].tanh() ) , dim=1 ) 
                 pbox = torch.cat((pxy, pwh), 1)  # predicted box
                 
                 if 0:
@@ -237,7 +237,11 @@ class ComputeLoss:
                 #j = torch.max(r, 1 / r).max(2)[0] < self.hyp['anchor_t']  # compare
                 # j = wh_iou(anchors, t[:, 4:6]) > model.hyp['iou_t']  # iou(3,n)=wh_iou(anchors(3,2), gwh(n,2))
                 #t = t[j]  # filter
-                t = torch.reshape(t,(-1,t.shape[-1]))
+                r = t[...,4:5] / anchors[:, None]
+                j = torch.max(r, 1 / r).max(2)[0] < self.hyp['anchor_t']
+                t = t[j]  # filter
+                
+                #t = torch.reshape(t,(-1,t.shape[-1]))
                 
                 # Offsets
                 gxy = t[:, 2:4]  # grid xy
