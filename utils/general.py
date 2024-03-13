@@ -39,7 +39,7 @@ from ultralytics.yolo.utils.checks import check_requirements
 
 from utils import TryExcept, emojis
 from utils.downloads import curl_download, gsutil_getsize
-from utils.metrics import box_iou, fitness, bbox_iou_eval
+from utils.metrics import box_iou, fitness, bbox_iou_eval #bbox_iou_eval平行四边形求IOU
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[1]  # YOLOv5 root directory

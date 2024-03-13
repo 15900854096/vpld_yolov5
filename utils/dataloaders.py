@@ -36,7 +36,7 @@ from utils.general import (DATASETS_DIR, LOGGER, NUM_THREADS, TQDM_BAR_FORMAT, c
 from utils.torch_utils import torch_distributed_zero_first
 
 
-from utils.augmentations import gt_flipud,gt_fliplr,gt_rotate,rotate_bound
+from utils.augmentations import gt_flipud,gt_fliplr,gt_rotate,rotate_bound,image_gt_data_resize_all
 
 # Parameters
 HELP_URL = 'See https://docs.ultralytics.com/yolov5/tutorials/train_custom_data'
@@ -430,7 +430,7 @@ class LoadStreams:
 
 def img2label_paths(img_paths):
     # Define label paths as a function of image paths
-    sa, sb = f'{os.sep}images{os.sep}', f'{os.sep}labels{os.sep}'  # /images/, /labels/ substrings
+    sa, sb = f'{os.sep}images{os.sep}', f'{os.sep}labels_txt{os.sep}'  # /images/, /labels/ substrings
     return [sb.join(x.rsplit(sa, 1)).rsplit('.', 1)[0] + '.txt' for x in img_paths]
 
 
@@ -723,7 +723,9 @@ class LoadImagesAndLabels(Dataset):
                 if nl:
                     labels = gt_rotate(labels, w, h, neww, newh, M)
         
-
+            if random.random() < hyp['resize']:
+                img, labels = image_gt_data_resize_all(img, labels)
+                nl = len(labels)
             # Cutouts
             # labels = cutout(img, labels, p=0.5)
             # nl = len(labels)  # update after cutout

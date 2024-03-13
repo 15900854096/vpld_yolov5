@@ -219,7 +219,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     if RANK in {-1, 0}:
         val_loader = create_dataloader(val_path,
                                        imgsz,
-                                       batch_size // WORLD_SIZE * 2,
+                                       batch_size // WORLD_SIZE,
                                        gs,
                                        single_cls,
                                        hyp=hyp,
@@ -361,7 +361,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             final_epoch = (epoch + 1 == epochs) or stopper.possible_stop
             if ((not noval or final_epoch) and (epoch > min(0.5*epochs, 300)) and (epoch%4 == 0)):  # Calculate mAP
                 results, maps, _ = validate.run(data_dict,
-                                                batch_size=batch_size // WORLD_SIZE * 2,
+                                                batch_size=batch_size // WORLD_SIZE,
                                                 imgsz=imgsz,
                                                 half=amp,
                                                 model=ema.ema,
@@ -426,7 +426,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                     LOGGER.info(f'\nValidating {f}...')
                     results, _, _ = validate.run(
                         data_dict,
-                        batch_size=batch_size // WORLD_SIZE * 2,
+                        batch_size=batch_size // WORLD_SIZE ,
                         imgsz=imgsz,
                         model=attempt_load(f, device).half(),
                         iou_thres=0.65 if is_coco else 0.60,  # best pycocotools at iou 0.65
