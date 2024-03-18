@@ -5,8 +5,8 @@ import sys
 
 
 point_color = (0, 255, 0)  # BGR
-thickness = 2
-lineType = 4
+thickness = 1
+lineType = 8
 
 def draw_save(img,labels,address):
     img_ = img.copy()

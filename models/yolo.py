@@ -33,7 +33,8 @@ try:
     import thop  # for FLOPs computation
 except ImportError:
     thop = None
-
+USE_THREE_POSITIVE_SAMPLE=0
+USE_EXP_ACTIVATE_LENG = 1
 
 class Detect(nn.Module):
     # YOLOv5 Detect head for detection models
@@ -71,8 +72,14 @@ class Detect(nn.Module):
                     y = torch.cat((xy, wh, conf.sigmoid(), mask), 4)
                 else:  # Detect (boxes only)
                     xy, len, c1s1c2s2, objcls1cls2 = x[i].split((2, 1, 4, self.nc + 1), 4)
-                    xy = (xy.sigmoid() * 2 + self.grid[i]) * self.stride[i]  # xy
-                    len = torch.exp(len) * self.anchor_grid[i]
+                    if USE_THREE_POSITIVE_SAMPLE:
+                        xy = (xy.sigmoid() * 2 + self.grid[i]) * self.stride[i]  # xy
+                    else:
+                        xy = (xy.sigmoid()  + self.grid[i]) * self.stride[i]  # xy
+                    if USE_EXP_ACTIVATE_LENG:
+                        len = torch.exp(len) * self.anchor_grid[i]
+                    else:
+                        len = (len) * self.anchor_grid[i]
                     c1s1c2s2 = c1s1c2s2.tanh()
                     objcls1cls2 = objcls1cls2.sigmoid()
                     #xy, wh, conf = x[i].sigmoid().split((2, 2, self.nc + 1), 4)
@@ -90,7 +97,10 @@ class Detect(nn.Module):
         shape_ = 1, self.na, ny, nx, 1  # grid shape len shape
         y, x = torch.arange(ny, device=d, dtype=t), torch.arange(nx, device=d, dtype=t)
         yv, xv = torch.meshgrid(y, x, indexing='ij') if torch_1_10 else torch.meshgrid(y, x)  # torch>=0.7 compatibility
-        grid = torch.stack((xv, yv), 2).expand(shape) - 0.5  # add grid offset, i.e. y = 2.0 * x - 0.5
+        if USE_THREE_POSITIVE_SAMPLE:
+            grid = torch.stack((xv, yv), 2).expand(shape) - 0.5  # add grid offset, i.e. y = 2.0 * x - 0.5
+        else:
+            grid = torch.stack((xv, yv), 2).expand(shape)  # add grid offset, i.e. y = x 
         anchor_grid = (self.anchors[i]).view((1, self.na, 1, 1, 1)).expand(shape_)
         return grid, anchor_grid
 
