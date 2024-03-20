@@ -153,7 +153,7 @@ class ComputeLoss:
                     lossxy = self.MSEwh(pbox[:,0:2], tbox[i][:,0:2])
                     losslen = self.MSEwh(pbox[:,2:3], tbox[i][:,2:3])
                     lossthe = self.MSEwh(pbox[:,3:], tbox[i][:,3:])
-                    lbox += lossxy * 1 + losslen * 20 + lossthe * 10
+                    lbox += lossxy * 1 + losslen * 15 + lossthe * 10
                     #lbox += lossxy * 0.8 + losslen * 1.2 + lossthe * 1.5
                     
                 #iou = bbox_iou(pbox, tbox[i], CIoU=True).squeeze()  # iou(prediction, target)
