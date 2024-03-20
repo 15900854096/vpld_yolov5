@@ -75,6 +75,7 @@ class Loggers():
             'metrics/precision',
             'metrics/recall',
             'metrics/mAP_0.5',
+            'metrics/mAP_0.95',
             'metrics/mAP_0.5:0.95',  # metrics
             'val/box_loss',
             'val/obj_loss',
@@ -82,7 +83,7 @@ class Loggers():
             'x/lr0',
             'x/lr1',
             'x/lr2']  # params
-        self.best_keys = ['best/epoch', 'best/precision', 'best/recall', 'best/mAP_0.5', 'best/mAP_0.5:0.95']
+        self.best_keys = ['best/epoch', 'best/precision', 'best/recall', 'best/mAP_0.5','best/mAP_0.95', 'best/mAP_0.5:0.95']
         for k in LOGGERS:
             setattr(self, k, None)  # init empty logger dictionary
         self.csv = True  # always log to csv

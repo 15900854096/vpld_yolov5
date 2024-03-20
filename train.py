@@ -219,7 +219,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     if RANK in {-1, 0}:
         val_loader = create_dataloader(val_path,
                                        imgsz,
-                                       batch_size // WORLD_SIZE * 2,
+                                       batch_size // WORLD_SIZE,
                                        gs,
                                        single_cls,
                                        hyp=hyp,
@@ -259,7 +259,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     # nw = min(nw, (epochs - start_epoch) / 2 * nb)  # limit warmup to < 1/2 of training
     last_opt_step = -1
     maps = np.zeros(nc)  # mAP per class
-    results = (0, 0, 0, 0, 0, 0, 0)  # P, R, mAP@.5, mAP@.5-.95, val_loss(box, obj, cls)
+    results = (0, 0, 0, 0, 0, 0, 0, 0)  # P, R, mAP@.5, mAP@.95, mAP@.5-.95, val_loss(box, obj, cls)
     scheduler.last_epoch = start_epoch - 1  # do not move
     scaler = torch.cuda.amp.GradScaler(enabled=amp)
     stopper, stop = EarlyStopping(patience=opt.patience), False
@@ -361,7 +361,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             final_epoch = (epoch + 1 == epochs) or stopper.possible_stop
             if ((not noval or final_epoch) and (epoch > min(0.5*epochs, 300)) and (epoch%4 == 0)):  # Calculate mAP
                 results, maps, _ = validate.run(data_dict,
-                                                batch_size=batch_size // WORLD_SIZE * 2,
+                                                batch_size=batch_size // WORLD_SIZE,
                                                 imgsz=imgsz,
                                                 half=amp,
                                                 model=ema.ema,
@@ -373,14 +373,14 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                                                 compute_loss=compute_loss)
 
             # Update best mAP
-            fi = fitness(np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5, mAP@.5-.95]
+            fi = fitness(np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5,mAP@.95, mAP@.5-.95]
             stop = stopper(epoch=epoch, fitness=fi)  # early stop check
             if fi > best_fitness:
                 best_fitness = fi
             log_vals = list(mloss) + list(results) + lr
             callbacks.run('on_fit_epoch_end', log_vals, epoch, best_fitness, fi)
 
-            if (epoch % 100 == 0):
+            if (epoch % 50 == 0):
                 ckpt = {'epoch': epoch,'best_fitness': best_fitness,'model': deepcopy(de_parallel(model)).half(),'ema': deepcopy(ema.ema).half(),'updates': ema.updates,'optimizer': optimizer.state_dict(),'opt': vars(opt),'git': GIT_INFO,'date': datetime.now().isoformat()}
                 print("#######################   ", epoch, ":", loss)
                 torch.save(ckpt, w / ('last_%d.pt'%epoch))
@@ -426,7 +426,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                     LOGGER.info(f'\nValidating {f}...')
                     results, _, _ = validate.run(
                         data_dict,
-                        batch_size=batch_size // WORLD_SIZE * 2,
+                        batch_size=batch_size // WORLD_SIZE ,
                         imgsz=imgsz,
                         model=attempt_load(f, device).half(),
                         iou_thres=0.65 if is_coco else 0.60,  # best pycocotools at iou 0.65
@@ -630,7 +630,7 @@ def main(opt, callbacks=Callbacks()):
             results = train(hyp.copy(), opt, device, callbacks)
             callbacks = Callbacks()
             # Write mutation results
-            keys = ('metrics/precision', 'metrics/recall', 'metrics/mAP_0.5', 'metrics/mAP_0.5:0.95', 'val/box_loss',
+            keys = ('metrics/precision', 'metrics/recall', 'metrics/mAP_0.5',  'metrics/mAP_0.95', 'metrics/mAP_0.5:0.95', 'val/box_loss',
                     'val/obj_loss', 'val/cls_loss')
             print_mutation(keys, results, hyp.copy(), save_dir, opt.bucket)
 

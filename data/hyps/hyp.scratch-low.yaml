@@ -10,13 +10,13 @@ weight_decay: 0.0005  # optimizer weight decay 5e-4
 warmup_epochs: 3.0  # warmup epochs (fractions ok)
 warmup_momentum: 0.8  # warmup initial momentum
 warmup_bias_lr: 0.1  # warmup initial bias lr
-box: 0.5  # box loss gain
-cls: 0.1  # cls loss gain
-cls_pw: 1.0  # cls BCELoss positive_weight
+box: 1  # box loss gain
+cls: 0.05  # cls loss gain
+cls_pw: 0.9  # cls BCELoss positive_weight
 obj: 0.5  # obj loss gain (scale with pixels)
-obj_pw: 1.0  # obj BCELoss positive_weight
+obj_pw: 0.9  # obj BCELoss positive_weight
 iou_t: 0.20  # IoU training threshold
-anchor_t: 4.0  # anchor-multiple threshold
+anchor_t: 2.0  # anchor-multiple threshold
 # anchors: 3  # anchors per output layer (0 to ignore)
 fl_gamma: 0.0  # focal loss gamma (efficientDet default gamma=1.5)
 hsv_h: 0.015  # image HSV-Hue augmentation (fraction)
@@ -29,7 +29,8 @@ shear: 0.0  # image shear (+/- deg)
 perspective: 0.0  # image perspective (+/- fraction), range 0-0.001
 flipud: 0.5  # image flip up-down (probability)
 fliplr: 0.5  # image flip left-right (probability)
-rotate: 0.8  # image flip up-down (probability)
+rotate: 0.3  # image flip up-down (probability)
+resize: 0.3    # image resize (probability)
 mosaic: 0.0  # image mosaic (probability)
 mixup: 0.0  # image mixup (probability)
 copy_paste: 0.0  # segment copy-paste (probability)

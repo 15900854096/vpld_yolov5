@@ -8,7 +8,8 @@ import torch.nn as nn
 
 from utils.metrics import bbox_iou
 from utils.torch_utils import de_parallel
-
+USE_THREE_POSITIVE_SAMPLE=0
+USE_EXP_ACTIVATE_LENG=0
 
 def smooth_BCE(eps=0.1):  # https://github.com/ultralytics/yolov3/issues/238#issuecomment-598028441
     # return positive, negative label smoothing BCE targets
@@ -111,6 +112,7 @@ class ComputeLoss:
 
         m = de_parallel(model).model[-1]  # Detect() module
         self.balance = {3: [4.0, 1.0, 0.4]}.get(m.nl, [4.0, 1.0, 0.25, 0.06, 0.02])  # P3-P7
+        #self.balance = {3: [1.0, 1.0, 1.0]}.get(m.nl, [1.0, 1.0, 1.0, 1.0, 1.0])  # P3-P7
         self.ssi = list(m.stride).index(16) if autobalance else 0  # stride 16 index
         self.MSEwh, self.BCEcls, self.BCEobj, self.gr, self.hyp, self.autobalance = MSEwh, BCEcls, BCEobj, 1.0, h, autobalance
         self.na = m.na  # number of anchors
@@ -136,8 +138,14 @@ class ComputeLoss:
                 pxy, pwh, _, pcls = pi[b, a, gj, gi].split((2, 5, 1, self.nc), 1)  # target-subset of predictions #pred: x y len cos1 sin1 cos2 sin2 obj cls1 cls2
 
                 # Regression
-                pxy = pxy.sigmoid() * 2 - 0.5
-                pwh = torch.cat( ( pwh[:,0:1].sigmoid() , pwh[:,1:].tanh() ) , dim=1 ) 
+                if USE_THREE_POSITIVE_SAMPLE:
+                    pxy = pxy.sigmoid() * 2 - 0.5
+                else:
+                    pxy = pxy.sigmoid()
+                if USE_EXP_ACTIVATE_LENG:
+                    pwh = torch.cat( (torch.exp(pwh[:,0:1]) * anchors[i] , pwh[:,1:].tanh() ) , dim=1 ) 
+                else:
+                    pwh = torch.cat( ((pwh[:,0:1]) * anchors[i] , pwh[:,1:].tanh() ) , dim=1 )
                 pbox = torch.cat((pxy, pwh), 1)  # predicted box
                 
                 if 0:
@@ -146,7 +154,7 @@ class ComputeLoss:
                     lossxy = self.MSEwh(pbox[:,0:2], tbox[i][:,0:2])
                     losslen = self.MSEwh(pbox[:,2:3], tbox[i][:,2:3])
                     lossthe = self.MSEwh(pbox[:,3:], tbox[i][:,3:])
-                    lbox += lossxy * 0.8 + losslen * 1 + lossthe * 1.2
+                    lbox += lossxy * 1 + losslen * 10 + lossthe * 5
                     #lbox += lossxy * 0.8 + losslen * 1.2 + lossthe * 1.5
                     
                 #iou = bbox_iou(pbox, tbox[i], CIoU=True).squeeze()  # iou(prediction, target)
@@ -187,8 +195,8 @@ class ComputeLoss:
 
     def build_targets(self, p, targets):  
         #translation
-        #            0    1   2  3  4  5  6  7
-        #targets: img_id cls x1 y1 x2 y2 x3 y3
+        #                          0      1     2    3    4     5    6    7
+        #targets: img_id  cls  x1  y1  x2  y2  x3  y3
         tmp = torch.cat((torch.zeros_like(targets,device=self.device),torch.zeros(targets.shape[0],1,device=self.device)),dim=1)
         tmp[:,0:4] = targets[:,0:4]
         tmp[:,4:5] = torch.sqrt(  torch.pow(targets[:,4:5] - targets[:,2:3],2) +  torch.pow(targets[:,5:6] - targets[:,3:4],2) )
@@ -201,8 +209,8 @@ class ComputeLoss:
         tmp[:,7:8] =  torch.cos(theta1)
         tmp[:,8:9] =  torch.sin(theta1)
         targets = tmp
-        #            0    1   2  3  4   5    6    7    8
-        #targets: img_id cls x1 y1 len cos1 sin1 cos2 sin2
+        #                        0        1     2     3      4      5        6         7        8
+        #targets: img_id  cls  x1  y1  len  cos1  sin1  cos2  sin2
         
         
         # Build targets for compute_loss(), input targets(image,class,x,y,w,h)
@@ -237,16 +245,24 @@ class ComputeLoss:
                 #j = torch.max(r, 1 / r).max(2)[0] < self.hyp['anchor_t']  # compare
                 # j = wh_iou(anchors, t[:, 4:6]) > model.hyp['iou_t']  # iou(3,n)=wh_iou(anchors(3,2), gwh(n,2))
                 #t = t[j]  # filter
-                t = torch.reshape(t,(-1,t.shape[-1]))
+                r = t[...,4:5] / anchors[:, None]
+                j = torch.max(r, 1 / r).max(2)[0] < self.hyp['anchor_t']
+                t = t[j]  # filter
+                
+                #t = torch.reshape(t,(-1,t.shape[-1]))
                 
                 # Offsets
                 gxy = t[:, 2:4]  # grid xy
                 gxi = gain[[2, 3]] - gxy  # inverse
                 j, k = ((gxy % 1 < g) & (gxy > 1)).T
                 l, m = ((gxi % 1 < g) & (gxi > 1)).T
-                j = torch.stack((torch.ones_like(j), j, k, l, m))
-                t = t.repeat((5, 1, 1))[j]
-                offsets = (torch.zeros_like(gxy)[None] + off[:, None])[j]
+                if USE_THREE_POSITIVE_SAMPLE:
+                    j = torch.stack((torch.ones_like(j), j, k, l, m))
+                    t = t.repeat((5, 1, 1))[j]
+                    offsets = (torch.zeros_like(gxy)[None] + off[:, None])[j]
+                else:
+                    t = t
+                    offsets =0
             else:
                 t = targets[0]
                 offsets = 0
