@@ -369,7 +369,7 @@ def run(
     maps = np.zeros(nc) + map
     for i, c in enumerate(ap_class):
         maps[c] = ap[i]
-    return (mp, mr, map50, map, *(loss.cpu() / len(dataloader)).tolist()), maps, t  #loss have three value :box_loss, obj_loss, cls_loss
+    return (mp, mr, map50, map95, map, *(loss.cpu() / len(dataloader)).tolist()), maps, t  #loss have three value :box_loss, obj_loss, cls_loss
 
 
 def parse_opt():

@@ -9,7 +9,7 @@ import torch.nn as nn
 from utils.metrics import bbox_iou
 from utils.torch_utils import de_parallel
 USE_THREE_POSITIVE_SAMPLE=0
-USE_EXP_ACTIVATE_LENG=1
+USE_EXP_ACTIVATE_LENG=0
 
 def smooth_BCE(eps=0.1):  # https://github.com/ultralytics/yolov3/issues/238#issuecomment-598028441
     # return positive, negative label smoothing BCE targets
@@ -112,6 +112,7 @@ class ComputeLoss:
 
         m = de_parallel(model).model[-1]  # Detect() module
         self.balance = {3: [4.0, 1.0, 0.4]}.get(m.nl, [4.0, 1.0, 0.25, 0.06, 0.02])  # P3-P7
+        #self.balance = {3: [1.0, 1.0, 1.0]}.get(m.nl, [1.0, 1.0, 1.0, 1.0, 1.0])  # P3-P7
         self.ssi = list(m.stride).index(16) if autobalance else 0  # stride 16 index
         self.MSEwh, self.BCEcls, self.BCEobj, self.gr, self.hyp, self.autobalance = MSEwh, BCEcls, BCEobj, 1.0, h, autobalance
         self.na = m.na  # number of anchors
@@ -153,7 +154,7 @@ class ComputeLoss:
                     lossxy = self.MSEwh(pbox[:,0:2], tbox[i][:,0:2])
                     losslen = self.MSEwh(pbox[:,2:3], tbox[i][:,2:3])
                     lossthe = self.MSEwh(pbox[:,3:], tbox[i][:,3:])
-                    lbox += lossxy * 1 + losslen * 15 + lossthe * 10
+                    lbox += lossxy * 1 + losslen * 10 + lossthe * 5
                     #lbox += lossxy * 0.8 + losslen * 1.2 + lossthe * 1.5
                     
                 #iou = bbox_iou(pbox, tbox[i], CIoU=True).squeeze()  # iou(prediction, target)

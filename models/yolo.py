@@ -34,7 +34,7 @@ try:
 except ImportError:
     thop = None
 USE_THREE_POSITIVE_SAMPLE=0
-USE_EXP_ACTIVATE_LENG = 1
+USE_EXP_ACTIVATE_LENG = 0
 
 class Detect(nn.Module):
     # YOLOv5 Detect head for detection models
