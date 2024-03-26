@@ -48,6 +48,7 @@ ROOT = FILE.parents[1]  # YOLOv5 root directory
 RANK = int(os.getenv('RANK', -1))
 
 # Settings
+PI = 3.1415926
 NUM_THREADS = min(8, max(1, os.cpu_count() - 1))  # number of YOLOv5 multiprocessing threads
 DATASETS_DIR = Path(os.getenv('YOLOv5_DATASETS_DIR', ROOT.parent / 'datasets'))  # global datasets directory
 AUTOINSTALL = str(os.getenv('YOLOv5_AUTOINSTALL', True)).lower() == 'true'  # global auto-install mode
@@ -931,6 +932,43 @@ def non_max_suppression(
         for Apidx, Ap in enumerate(Ax):
             for Bpidx, Bp in enumerate(Bx):
                 Acls = list(Ap[16:])
+                point0=(Ap[0],Ap[1])
+                point1=(Bp[8],Bp[9])
+                Alen = Ap[6]*640
+                Blen = Bp[14]*640
+                meanlen = (Alen+Blen)/2
+                mean_conf = (Ap[7]+Bp[15])/2
+                point0_dest=( point0[0]+Alen*Ap[4], point0[1]+Alen*Ap[5]) 
+                point1_dest=( point1[0]+Blen*Bp[12], point1[1]+Blen*Bp[13]) 
+
+                Ac1 = Ap[2]
+                As1 = Ap[3]
+                Bc1 = Bp[10]
+                Bs1 = Bp[11]
+                if(math.sqrt(Ac1*Ac1+As1*As1)==0 or math.sqrt(Bc1*Bc1+Bs1*Bs1)==0):
+                    continue
+    
+                cosvalue = (Ac1*Bc1+As1*Bs1) / (math.sqrt(Ac1*Ac1+As1*As1) * math.sqrt(Bc1*Bc1+Bs1*Bs1))
+                cosvalue = max(-1,cosvalue)
+                cosvalue = min(1,cosvalue)
+                Adire_Bdire_angle = math.acos( cosvalue )
+                
+                if(disPts(point0 ,point1_dest)<meanlen*0.2 and disPts(point0_dest ,point1)<meanlen*0.2 and Adire_Bdire_angle<PI/18):
+                    abdis = disPts(point0 ,point1)/640
+                    abangle = math.atan2(point1[1]-point0[1], point1[0]-point0[0])
+
+                    bcangle = math.atan2(Bp[11], Bp[10])
+                    adangle = math.atan2(Ap[3],  Ap[2])
+                    tm = math.atan2((Bp[11]+Ap[3])/2, (Bp[10]+Ap[2])/2)
+
+                    npy = list([point0[0], point0[1], abdis, math.cos(abangle), math.sin(abangle), math.cos(tm), math.sin(tm), mean_conf]) + Acls
+                    npy = np.array(npy)
+                    npy=torch.tensor(npy).to(prediction.device)
+                    temp.append(npy)
+
+
+                '''
+                Acls = list(Ap[16:])
                 dist = math.sqrt(math.pow(Ap[0]-Bp[8], 2) + math.pow(Ap[1]-Bp[9], 2))/640
  
                 Aangle = math.atan2(Ap[4],Ap[5])
@@ -948,6 +986,7 @@ def non_max_suppression(
                     npy = np.array(npy)
                     npy=torch.tensor(npy).to(prediction.device)
                     temp.append(npy)
+                '''
         if(0 == len(temp)):
             continue
         x = torch.stack(temp,dim=0)
@@ -1188,3 +1227,6 @@ def nms(boxes,nms_thresh):
         order = order[not_overlaps]
     keep_boxes = boxes[[i.item() for i in keep_indices]]
     return keep_indices
+
+def disPts(A ,B):
+    return math.sqrt(math.pow(A[0]-B[0],2) + math.pow(A[1]-B[1],2) )    
