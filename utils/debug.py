@@ -34,6 +34,6 @@ def batch_draw_save(imgs,labelses):
         labels = labelses[idx]
         draw_save(img,labels[:,1:],r"/home/xuqing/tools/yolov5_ori/xuqing/flipud/%06d.jpg"%cnt)
         cnt+=1
-        if(cnt>300):
+        if(cnt>1000):
             sys.exit()
         

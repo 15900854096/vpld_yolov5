@@ -402,25 +402,25 @@ class ToTensor:
 
 #add by xuqing
 def gt_flipud(t):
-    c,p0,p1,p2 =  np.split(t , [1, 3, 5], axis=1)
+    c,p0,p1,p2,p3 =  np.split(t , [1, 3, 5, 7], axis=1)
     p0[:,1]=1-p0[:,1]
     p1[:,1]=1-p1[:,1]
     p2[:,1]=1-p2[:,1]
-    p2=p0+p2-p1
-    t=np.concatenate([c,p1,p0,p2],axis=1)
+    p3[:,1]=1-p3[:,1]
+    t=np.concatenate([c,p1,p0,p3,p2],axis=1)
     return t
 
 def gt_fliplr(t):
-    c,p0,p1,p2 =  np.split(t , [1, 3, 5], axis=1)
+    c,p0,p1,p2,p3 =  np.split(t , [1, 3, 5, 7], axis=1)
     p0[:,0]=1-p0[:,0]
     p1[:,0]=1-p1[:,0]
     p2[:,0]=1-p2[:,0]
-    p2=p0+p2-p1
-    t=np.concatenate([c,p1,p0,p2],axis=1)
+    p3[:,0]=1-p3[:,0]
+    t=np.concatenate([c,p1,p0,p3,p2],axis=1)
     return t
 
 def gt_rotate(t,oW,oH,nW, nH,M):
-    c,p0,p1,p2 =  np.split(t , [1, 3, 5], axis=1)
+    c,p0,p1,p2,p3 =  np.split(t , [1, 3, 5, 7], axis=1)
     
     tmp0 = np.zeros_like(p0)
     tmp0[:,0]=(M[0,0]*p0[:,0]*oW+M[0,1]*p0[:,1]*oH+1*M[0,2])/nW
@@ -436,7 +436,13 @@ def gt_rotate(t,oW,oH,nW, nH,M):
     tmp2[:,0]=(M[0,0]*p2[:,0]*oW+M[0,1]*p2[:,1]*oH+1*M[0,2])/nW
     tmp2[:,1]=(M[1,0]*p2[:,0]*oW+M[1,1]*p2[:,1]*oH+1*M[1,2])/nH
     p2=tmp2
-    return np.concatenate([c,p0,p1,p2],axis=1)
+
+    tmp3 = np.zeros_like(p3)
+    tmp3[:,0]=(M[0,0]*p3[:,0]*oW+M[0,1]*p3[:,1]*oH+1*M[0,2])/nW
+    tmp3[:,1]=(M[1,0]*p3[:,0]*oW+M[1,1]*p3[:,1]*oH+1*M[1,2])/nH
+    p3=tmp3
+
+    return np.concatenate([c,p0,p1,p2,p3],axis=1)
 
 def rotate_bound(image, angle):
     # grab the dimensions of the image and then determine the
@@ -477,11 +483,11 @@ def is_gt_out_img(lot, min_value, max_value):
 def image_gt_data_resize_all(img, gt):
     H,W,C = img.shape
     imgsize = H
-    rate = np.random.uniform(0.8, 1.2, 1)
+    rate = np.random.uniform(0.9, 1.1, 1)
     if(rate>1):#图像贴在大图上，再resize，相当于边界填充  相当于库位变小
         masksize = int(imgsize*rate)
         while(masksize == imgsize):
-            rate = np.random.uniform(1, 1.2, 1)
+            rate = np.random.uniform(1, 1.1, 1)
             masksize = int(imgsize*rate)
         mask = np.random.randint(0, 255, [masksize,masksize,3],dtype=np.uint8)
         start_row = np.random.randint(0, masksize-imgsize)
@@ -489,28 +495,28 @@ def image_gt_data_resize_all(img, gt):
         mask[start_row:start_row+imgsize,start_col:start_col+imgsize,:] = img
         img_res = cv2.resize(mask, (imgsize, imgsize))
         if(gt.shape[0]>0):
-            gt_res = gt * np.array([1,imgsize,imgsize,imgsize,imgsize,imgsize,imgsize])
-            gt_res = gt_res + np.array([0,start_col, start_row, start_col, start_row, start_col, start_row])
-            gt_res = gt_res / np.array([1,masksize,masksize,masksize,masksize,masksize,masksize])
+            gt_res = gt * np.array([1,imgsize,imgsize,imgsize,imgsize,imgsize,imgsize,imgsize,imgsize])
+            gt_res = gt_res + np.array([0,start_col, start_row, start_col, start_row, start_col, start_row, start_col, start_row])
+            gt_res = gt_res / np.array([1,masksize,masksize,masksize,masksize,masksize,masksize,masksize,masksize])
         else:
             gt_res = gt
         return img_res,gt_res
     else:#图像放大再裁剪其中一部分  相当于库位变大
         masksize = int(imgsize/rate)
         while(masksize == imgsize):
-            rate = np.random.uniform(0.8, 1, 1)
+            rate = np.random.uniform(0.9, 1, 1)
             masksize = int(imgsize/rate)
         img = cv2.resize(img, (masksize, masksize))
         start_row = np.random.randint(0, masksize-imgsize)
         start_col = np.random.randint(0, masksize-imgsize)
         img_res = img[start_row:start_row+imgsize,start_col:start_col+imgsize,:]
         if(gt.shape[0]>0):
-            gt_res = gt * np.array([1,masksize,masksize,masksize,masksize,masksize,masksize])
-            gt_res = gt_res - np.array([0,start_col, start_row, start_col, start_row, start_col, start_row])
-            select = [is_gt_out_img(lot, 10, imgsize) for lot in gt_res]
+            gt_res = gt * np.array([1,masksize,masksize,masksize,masksize,masksize,masksize,masksize,masksize])
+            gt_res = gt_res - np.array([0,start_col, start_row, start_col, start_row, start_col, start_row, start_col, start_row])
+            select = [is_gt_out_img(lot, 20, imgsize-20) for lot in gt_res]
             gt_res = gt_res[select]
             if(gt_res.shape[0]>0):
-                gt_res = gt_res / np.array([1,imgsize,imgsize,imgsize,imgsize,imgsize,imgsize])
+                gt_res = gt_res / np.array([1,imgsize,imgsize,imgsize,imgsize,imgsize,imgsize,imgsize,imgsize])
         else:
             gt_res = gt
         return img_res, gt_res
