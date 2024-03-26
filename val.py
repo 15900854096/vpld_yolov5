@@ -208,19 +208,19 @@ def run(
 
         # Inference
         with dt[1]:
-            preds, train_out = model(im) if compute_loss else (model(im, augment=augment), None)
+            preds, train_out = model(im) if compute_loss else (model(im, augment=augment), None)#preds像是原buffer经过激活层, train_out像是原buffer未经过激活层
 
         # Loss
         if compute_loss:
             loss += compute_loss(train_out, targets)[1]  # box, obj, cls
 
         # NMS
-        #targets: img_id cls x1 y1 x2 y2 x3 y3
+        #targets: img_id cls x1 y1 x2 y2 x3 y3 x3 x4
         #targets[:, 2:] *= torch.tensor((shapes[si][0][0], shapes[si][0][0], shapes[si][0][0], shapes[si][0][0], shapes[si][0][0], shapes[si][0][0]), device=device)  # to pixels #base_600
         lb = [targets[targets[:, 0] == i, 1:] for i in range(nb)] if save_hybrid else []  # for autolabelling
         with dt[2]:
-            # 0 1  2   3  4  5  6  7   8    9 
-            # x y len c1 s1 c2 s2 obj cls1 cls2
+            #             0  1  2   3    4   5   6    7    8  9  10  11  12  13  14   15   16   17
+            #predictions: Ax Ay Ac1 As1 Ac2 As2 Alen Aobj  Bx By Bc1 Bs1 Bc2 Bs2 Blen Bobj cls1 cls2
             preds = non_max_suppression(preds,
                                         conf_thres,
                                         iou_thres,
@@ -229,10 +229,10 @@ def run(
                                         agnostic=single_cls,
                                         max_det=max_det)
             # 0 1  2   3  4  5  6  7    8
-            # x y len c1 s1 c2 s2 conf cls  base_640
+            # x y len c1 s1 c2 s2 conf cls  x&y:base_640  others:normal 1
         # Metrics
         for si, pred in enumerate(preds):
-            labels = targets[targets[:, 0] == si, 1:] #lebels: label x1 y1 x2 y2 x3 y3  
+            labels = targets[targets[:, 0] == si, 1:][:,:7] #lebels: label x1 y1 x2 y2 x3 y3  
             labels[:, 1:] *= torch.tensor((shapes[si][0][0], shapes[si][0][0], shapes[si][0][0], shapes[si][0][0], shapes[si][0][0], shapes[si][0][0]), device=device)#lebels: label x1 y1 x2 y2 x3 y3  base_600
             nl, npr = labels.shape[0], pred.shape[0]  # number of labels, predictions
             path, shape = Path(paths[si]), shapes[si][0]
@@ -277,6 +277,9 @@ def run(
             labels[:,5:6] = (labels[:,5:6] - labels[:,3:4])/oldleng*leng + labels[:,3:4]
             labels[:,6:7] = (labels[:,6:7] - labels[:,4:5])/oldleng*leng + labels[:,4:5]
             
+            #padding: cal map not care about label whether right
+            labels[:,0:1] = 0
+            predn[:,7:8] = 0
             
             # Evaluate
             if nl:

@@ -35,6 +35,8 @@ import pkg_resources as pkg
 import torch
 import torchvision
 import yaml
+import math
+import sys
 from ultralytics.yolo.utils.checks import check_requirements
 
 from utils import TryExcept, emojis
@@ -862,8 +864,8 @@ def non_max_suppression(
         max_det=300,
         nm=0,  # number of masks
 ):
-    #           0 1  2   3    4    5    6    7   8    9
-    #prediction:x y len cos1 sin1 cos2 sin2 obj cls1 cls2
+    #                              0  1  2   3    4   5   6    7    8  9  10  11   12  13  14   15   16   17
+    #target-subset of predictions: Ax Ay Ac1 As1 Ac2 As2 Alen Aobj  Bx By Bc1 Bs1  Bc2 Bs2 Blen Bobj cls1 cls2
     
     """Non-Maximum Suppression (NMS) on inference results to reject overlapping detections
 
@@ -882,8 +884,10 @@ def non_max_suppression(
     if mps:  # MPS not fully supported yet, convert tensors to CPU before NMS
         prediction = prediction.cpu()
     bs = prediction.shape[0]  # batch size
-    nc = prediction.shape[2] - nm - 8  # number of classes
-    xc = prediction[..., 7] > conf_thres  # candidates
+    nc = prediction.shape[2] - nm - 16  # number of classes
+
+    Axc = prediction[..., 7] > conf_thres  # candidates
+    Bxc = prediction[..., 15] > conf_thres  # candidates
 
     # Settings
     # min_wh = 2  # (pixels) minimum box width and height
@@ -895,12 +899,17 @@ def non_max_suppression(
     merge = False  # use merge-NMS
 
     t = time.time()
-    mi = 8 + nc  # mask start index
-    output = [torch.zeros((0, 9 + nm), device=prediction.device)] * bs
+    mi = 16 + nc  # mask start index
+    output = [torch.zeros((0, 9 + nm), device=prediction.device)] * bs # 9 = x y len c1 s1 c2 s2 conf cls  base_640
     for xi, x in enumerate(prediction):  # image index, image inference
         # Apply constraints
         # x[((x[..., 2:4] < min_wh) | (x[..., 2:4] > max_wh)).any(1), 4] = 0  # width-height
-        x = x[xc[xi]]  # confidence
+        temp = []
+        Ax = x[Axc[xi]]  # Ax Ay Ac1 As1 Ac2 As2 Alen Aobj Bx By Bc1 Bs1 Bc2 Bs2 Blen Bobj cls1 cls2
+        Bx = x[Bxc[xi]]  # Ax Ay Ac1 As1 Ac2 As2 Alen Aobj Bx By Bc1 Bs1 Bc2 Bs2 Blen Bobj cls1 cls2
+
+        # 0  1  2    3   4   5    6    7  8  9  10  11  12  13  14   15   16   17
+        # Ax Ay Ac1 As1 Ac2 As2 Alen Aobj Bx By Bc1 Bs1 Bc2 Bs2 Blen Bobj cls1 cls2
 
         # Cat apriori labels if autolabelling
         if labels and len(labels[xi]):#not use this select
@@ -912,10 +921,39 @@ def non_max_suppression(
             x = torch.cat((x, v), 0)
 
         # If none remain process next image
-        if not x.shape[0]:
+        if not Ax.shape[0]:
+            continue
+        if not Bx.shape[0]:
             continue
 
-        # Compute conf
+        Ax=Ax.cpu().numpy()
+        Bx=Bx.cpu().numpy()
+        for Apidx, Ap in enumerate(Ax):
+            for Bpidx, Bp in enumerate(Bx):
+                Acls = list(Ap[16:])
+                dist = math.sqrt(math.pow(Ap[0]-Bp[8], 2) + math.pow(Ap[1]-Bp[9], 2))/640
+ 
+                Aangle = math.atan2(Ap[4],Ap[5])
+                Bangle = math.atan2(Bp[12],Bp[13])
+                mean_conf = (Ap[7]+Bp[15])/2
+                mean_length = (Ap[6]+Bp[14])/2
+                total_angle = (math.fabs(Aangle) + math.fabs(Bangle))/3.1415926*180
+
+                is_angle_ok = (Aangle*Bangle<0) and (total_angle>150) and (total_angle<210)
+                is_dist_ok = (dist>mean_length*0.8) and (dist<mean_length*1.2)
+
+                if(is_angle_ok and is_dist_ok):
+                    abangle = math.atan2(Bp[9]-Ap[1], Bp[8]-Ap[0])
+                    npy = list([Ap[0], Ap[1], dist, math.cos(abangle), math.sin(abangle), Ap[2], Ap[3], mean_conf]) + Acls
+                    npy = np.array(npy)
+                    npy=torch.tensor(npy).to(prediction.device)
+                    temp.append(npy)
+        if(0 == len(temp)):
+            continue
+        x = torch.stack(temp,dim=0)
+        
+
+        # Compute conf       
         x[:, 8:] *= x[:, 7:8]  # conf = obj_conf * cls_conf
 
         '''

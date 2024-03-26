@@ -729,7 +729,7 @@ class LoadImagesAndLabels(Dataset):
             # Cutouts
             # labels = cutout(img, labels, p=0.5)
             # nl = len(labels)  # update after cutout
-        labels_out = torch.zeros((nl, 8))# img_id cls x1 y1 x2 y2 x3 y3
+        labels_out = torch.zeros((nl, 10))# img_id cls x1 y1 x2 y2 x3 y3 x4 y4
         if nl:
             labels_out[:, 1:] = torch.from_numpy(labels)
 
@@ -1025,14 +1025,14 @@ def verify_image_label(args):
             nf = 1  # label found
             with open(lb_file) as f:
                 lb = [x.split() for x in f.read().strip().splitlines() if len(x)]
-                if any(len(x) > 8 for x in lb):  # is segment
+                if any(len(x) > 10 for x in lb):  # is segment
                     classes = np.array([x[0] for x in lb], dtype=np.float32)
                     segments = [np.array(x[1:], dtype=np.float32).reshape(-1, 2) for x in lb]  # (cls, xy1...)
                     lb = np.concatenate((classes.reshape(-1, 1), segments2boxes(segments)), 1)  # (cls, xywh)
                 lb = np.array(lb, dtype=np.float32)
             nl = len(lb)
             if nl:
-                assert lb.shape[1] == 7, f'labels require 7 columns(cls x1 y1 x2 y3 x3 y3), {lb.shape[1]} columns detected'
+                assert lb.shape[1] == 9, f'labels require 9 columns(cls x1 y1 x2 y3 x3 y3 x4 y4), {lb.shape[1]} columns detected'
                 #assert (lb >= 0).all(), f'negative label values {lb[lb < 0]}'
                 #assert (lb[:, 1:] <= 1).all(), f'non-normalized or out of bounds coordinates {lb[:, 1:][lb[:, 1:] > 1]}'
                 _, i = np.unique(lb, axis=0, return_index=True)
@@ -1043,10 +1043,10 @@ def verify_image_label(args):
                     msg = f'{prefix}WARNING ⚠️ {im_file}: {nl - len(i)} duplicate labels removed'
             else:
                 ne = 1  # label empty
-                lb = np.zeros((0, 7), dtype=np.float32)
+                lb = np.zeros((0, 9), dtype=np.float32)
         else:
             nm = 1  # label missing
-            lb = np.zeros((0, 7), dtype=np.float32)
+            lb = np.zeros((0, 9), dtype=np.float32)
         return im_file, lb, shape, segments, nm, nf, ne, nc, msg
     except Exception as e:
         nc = 1
