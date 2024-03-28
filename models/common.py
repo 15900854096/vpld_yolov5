@@ -59,7 +59,19 @@ class Conv(nn.Module):
     def forward_fuse(self, x):
         return self.act(self.conv(x))
 
+class DecoupConv(nn.Module):
+    def __init__(self, c1, c2, clsnum, archornum, k=3, s=1):
+        super().__init__()
+        self.conv1 = Conv(c1, 2*c1, k, s)
+        self.conv1_next = Conv(2*c1, c1, k, s)
+        self.conv2 = Conv(c1, 2*c1, k, s)
+        self.conv2_next = Conv(2*c1, c1, k, s)
+        self.convA = nn.Conv2d(c1, (int)((c2-clsnum)/2) * archornum, 1, 1, autopad(1), groups=1, dilation=1, bias=True)
+        self.convB = nn.Conv2d(c1, (int)((c2-clsnum)/2+clsnum) * archornum, 1, 1, autopad(1), groups=1,  dilation=1, bias=True)
+    def forward(self, x):
+        return torch.cat(  (self.convA(self.conv1_next(self.conv1(x))), self.convB(self.conv2_next(self.conv2(x))))  ,1)
 
+    
 class DWConv(Conv):
     # Depth-wise convolution
     def __init__(self, c1, c2, k=1, s=1, d=1, act=True):  # ch_in, ch_out, kernel, stride, dilation, activation

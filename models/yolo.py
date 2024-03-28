@@ -51,7 +51,9 @@ class Detect(nn.Module):
         self.grid = [torch.empty(0) for _ in range(self.nl)]  # init grid
         self.anchor_grid = [torch.empty(0) for _ in range(self.nl)]  # init anchor grid
         self.register_buffer('anchors', torch.tensor(anchors).float().view(self.nl, -1, 1)) #view(self.nl, -1, 2)  # shape(nl,na,2)
-        self.m = nn.ModuleList(nn.Conv2d(x, self.no * self.na, 1) for x in ch)  # output conv
+        #self.m = nn.ModuleList(nn.Conv2d(x, self.no * self.na, 1) for x in ch)  # output conv
+        self.m  = nn.ModuleList(DecoupConv(x, self.no, self.nc , self.na, 1) for x in ch)
+        
         self.inplace = inplace  # use inplace ops (e.g. slice assignment)
 
     def forward(self, x):
@@ -73,9 +75,12 @@ class Detect(nn.Module):
                 else:  # Detect (boxes only)
                     #target-subset of predictions #pred: Ax Ay Ac1 As1 Ac2 As2 Alen Aobj  Bx By Bc1 Bs1  Bc2 Bs2 Blen Bobj cls1 cls2
                     Axy, Ac1s1c2s2, Alen, Aobj, Bxy, Bc1s1c2s2, Blen, Bobj, class12 = x[i].split((2, 4, 1, 1, 2, 4, 1, 1, self.nc), 4)
-                    
-                    Axy = (Axy.sigmoid()  + self.grid[i]) * self.stride[i]
-                    Bxy = (Bxy.sigmoid()  + self.grid[i]) * self.stride[i]  # xy
+                    if USE_THREE_POSITIVE_SAMPLE:
+                        Axy = (Axy.sigmoid()*2  + self.grid[i]) * self.stride[i]
+                        Bxy = (Bxy.sigmoid()*2  + self.grid[i]) * self.stride[i]  # xy
+                    else:
+                        Axy = (Axy.sigmoid()  + self.grid[i]) * self.stride[i]
+                        Bxy = (Bxy.sigmoid()  + self.grid[i]) * self.stride[i]  # xy
                     Ac1s1c2s2 = Ac1s1c2s2.tanh() 
                     Bc1s1c2s2 = Bc1s1c2s2.tanh()
                     Alen = (Alen.sigmoid()) * self.anchor_grid[i]
@@ -271,11 +276,20 @@ class DetectionModel(BaseModel):
         # cf = torch.bincount(torch.tensor(np.concatenate(dataset.labels, 0)[:, 0]).long(), minlength=nc) + 1.
         m = self.model[-1]  # Detect() module
         for mi, s in zip(m.m, m.stride):  # from
-            b = mi.bias.view(m.na, -1)  # conv.bias(255) to (3,85)
-            b.data[:, 4] += math.log(8 / (640 / s) ** 2)  # obj (8 objects per 640 image)
-            b.data[:, 5:5 + m.nc] += math.log(0.6 / (m.nc - 0.99999)) if cf is None else torch.log(cf / cf.sum())  # cls
-            mi.bias = torch.nn.Parameter(b.view(-1), requires_grad=True)
+            #b = mi.bias.view(m.na, -1)  # conv.bias(255) to (3,85)
+            #b.data[:, 4] += math.log(8 / (640 / s) ** 2)  # obj (8 objects per 640 image)
+            #b.data[:, 5:5 + m.nc] += math.log(0.6 / (m.nc - 0.99999)) if cf is None else torch.log(cf / cf.sum())  # cls
+            #mi.bias = torch.nn.Parameter(b.view(-1), requires_grad=True)
 
+            b = mi.convA.bias.view(m.na, -1)  # conv.bias(255) to (3,85)
+            b.data[:, 7] += math.log(8 / (640 / s) ** 2)  # obj (8 objects per 640 image)
+            mi.convA.bias = torch.nn.Parameter(b.view(-1), requires_grad=True)
+            
+            b = mi.convB.bias.view(m.na, -1)  # conv.bias(255) to (3,85)
+            b.data[:, 7] += math.log(8 / (640 / s) ** 2)  # obj (8 objects per 640 image)
+            b.data[:, 8:8 + m.nc] += math.log(0.6 / (m.nc - 0.99999)) if cf is None else torch.log(cf / cf.sum())  # cls
+            mi.convB.bias = torch.nn.Parameter(b.view(-1), requires_grad=True)
+            
 
 Model = DetectionModel  # retain YOLOv5 'Model' class for backwards compatibility
 
@@ -320,7 +334,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         Conv.default_act = eval(act)  # redefine default activation, i.e. Conv.default_act = nn.SiLU()
         LOGGER.info(f"{colorstr('activation:')} {act}")  # print
     na = (len(anchors[0])) if isinstance(anchors, list) else anchors  # number of anchors
-    no = na * (nc + 8)  # number of outputs = anchors * (classes + 8) x y len c1 s1 c2 s2 obj
+    no = na * (nc + 16)  # number of outputs = anchors * (classes + 16) x1 y1 c1 s1 c2 s2 len1 obj1 x2 y2 c1 s1 c2 s2 len2 obj2
 
     layers, save, c2 = [], [], ch[-1]  # layers, savelist, ch out
     for i, (f, n, m, args) in enumerate(d['backbone'] + d['head']):  # from, number, module, args
@@ -335,7 +349,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
                 BottleneckCSP, C3, C3TR, C3SPP, C3Ghost, nn.ConvTranspose2d, DWConvTranspose2d, C3x}:
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
-                c2 = make_divisible(c2 * gw, 8)
+                c2 = make_divisible(c2 * gw, 16)
 
             args = [c1, c2, *args[1:]]
             if m in {BottleneckCSP, C3, C3TR, C3Ghost, C3x}:
@@ -351,7 +365,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             if isinstance(args[1], int):  # number of anchors
                 args[1] = [list(range(args[1] * 2))] * len(f)
             if m is Segment:
-                args[3] = make_divisible(args[3] * gw, 8)
+                args[3] = make_divisible(args[3] * gw, 16)
         elif m is Contract:
             c2 = ch[f] * args[0] ** 2
         elif m is Expand:
@@ -360,7 +374,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             c2 = ch[f]
 
         m_ = nn.Sequential(*(m(*args) for _ in range(n))) if n > 1 else m(*args)  # module
-        t = str(m)[8:-2].replace('__main__.', '')  # module type
+        t = str(m)[16:-2].replace('__main__.', '')  # module type
         np = sum(x.numel() for x in m_.parameters())  # number params
         m_.i, m_.f, m_.type, m_.np = i, f, t, np  # attach index, 'from' index, type, number params
         LOGGER.info(f'{i:>3}{str(f):>18}{n_:>3}{np:10.0f}  {t:<40}{str(args):<30}')  # print

@@ -953,7 +953,7 @@ def non_max_suppression(
                 cosvalue = min(1,cosvalue)
                 Adire_Bdire_angle = math.acos( cosvalue )
                 
-                if(disPts(point0 ,point1_dest)<meanlen*0.2 and disPts(point0_dest ,point1)<meanlen*0.2 and Adire_Bdire_angle<PI/18):
+                if(disPts(point0 ,point1_dest)<meanlen*0.3 and disPts(point0_dest ,point1)<meanlen*0.3 and Adire_Bdire_angle<PI/18):
                     abdis = disPts(point0 ,point1)/640
                     abangle = math.atan2(point1[1]-point0[1], point1[0]-point0[0])
 

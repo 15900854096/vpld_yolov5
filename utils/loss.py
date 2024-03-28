@@ -273,23 +273,40 @@ class ComputeLoss:
                 #t = torch.reshape(t,(-1,t.shape[-1]))
                 
                 # Offsets
-                '''
-                if USE_THREE_POSITIVE_SAMPLE:
-                    gxy = t[:, 2:4]  # grid xy
-                    gxi = gain[[2, 3]] - gxy  # inverse
-                    j, k = ((gxy % 1 < g) & (gxy > 1)).T
-                    l, m = ((gxi % 1 < g) & (gxi > 1)).T
-                    j = torch.stack((torch.ones_like(j), j, k, l, m))
-                    t = t.repeat((5, 1, 1))[j]
-                    offsets = (torch.zeros_like(gxy)[None] + off[:, None])[j]
-                else:
-                    t = t
-                    offsets =0
-                '''
                 r = t[...,4:5] / anchors[:, None]
                 j = torch.max(r, 1 / r).max(2)[0] > -1000000000
                 t = t[j]
-                offsets = 0
+                    
+                if USE_THREE_POSITIVE_SAMPLE:
+                    Agxy = t[:, 2:4]  # grid xy
+                    Bgxy = t[:, 9:11]  # grid xy
+                    Agxi = gain[[2, 3]] - Agxy  # inverse
+                    Bgxi = gain[[9, 10]] - Bgxy  # inverse
+                    
+                    Aj, Ak = ((Agxy % 1 < g) & (Agxy > 1)).T
+                    Al, Am = ((Agxi % 1 < g) & (Agxi > 1)).T
+                    Aj = torch.stack((torch.ones_like(Aj), Aj, Ak, Al, Am))
+                    
+                    Bj, Bk = ((Bgxy % 1 < g) & (Bgxy > 1)).T
+                    Bl, Bm = ((Bgxi % 1 < g) & (Bgxi > 1)).T
+                    Bj = torch.stack((torch.ones_like(Bj), Bj, Bk, Bl, Bm))
+                    
+                    #idx = torch.concat((Aj,Bj))
+                    At = t.repeat((5, 1, 1))[Aj]
+                    Bt = t.repeat((5, 1, 1))[Bj]
+                    Aoffsets = (torch.zeros_like(Agxy)[None] + off[:, None])[Aj]
+                    Boffsets = (torch.zeros_like(Bgxy)[None] + off[:, None])[Bj]
+                    t = torch.concat((At,Bt))
+                    offsets = torch.concat((Aoffsets,Boffsets))
+                    # print("At.shape:",At.shape)
+                    # print("Bt.shape:",Bt.shape)
+                    # print("Aoffsets.shape:",Aoffsets.shape)
+                    # print("Boffsets.shape:",Boffsets.shape)
+                    # print("t.shape:",t.shape)
+                    # print("offsets.shape:",offsets.shape)
+                    # sys.exit()
+                else:
+                    offsets = 0
             else:
                 t = targets[0]
                 offsets = 0

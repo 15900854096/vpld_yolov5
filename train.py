@@ -359,7 +359,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             callbacks.run('on_train_epoch_end', epoch=epoch)
             ema.update_attr(model, include=['yaml', 'nc', 'hyp', 'names', 'stride', 'class_weights'])
             final_epoch = (epoch + 1 == epochs) or stopper.possible_stop
-            if ((not noval or final_epoch) and (epoch > min(0.5*epochs, 300)) and (epoch%4 == 0)):  # Calculate mAP
+            if ((not noval or final_epoch) and (epoch > min(0.5*epochs, 300)) and (epoch%10 == 0)):  # Calculate mAP
             #if ((not noval or final_epoch) and (epoch > min(0.5*epochs, 0)) and (epoch%1 == 0)):
                 results, maps, _ = validate.run(data_dict,
                                                 batch_size=batch_size // WORLD_SIZE,
@@ -381,10 +381,11 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             log_vals = list(mloss) + list(results) + lr
             callbacks.run('on_fit_epoch_end', log_vals, epoch, best_fitness, fi)
 
-            if (epoch % 50 == 0):
+            if ((epoch == 0) or (epoch % 50 == 0)):
                 ckpt = {'epoch': epoch,'best_fitness': best_fitness,'model': deepcopy(de_parallel(model)).half(),'ema': deepcopy(ema.ema).half(),'updates': ema.updates,'optimizer': optimizer.state_dict(),'opt': vars(opt),'git': GIT_INFO,'date': datetime.now().isoformat()}
                 print("#######################   ", epoch, ":", loss)
                 torch.save(ckpt, w / ('last_%d.pt'%epoch))
+                #sys.exit()
             # Save model
             if (not nosave) or (final_epoch and not evolve):  # if save
                 ckpt = {

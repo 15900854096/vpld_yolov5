@@ -513,7 +513,7 @@ def image_gt_data_resize_all(img, gt):
         if(gt.shape[0]>0):
             gt_res = gt * np.array([1,masksize,masksize,masksize,masksize,masksize,masksize,masksize,masksize])
             gt_res = gt_res - np.array([0,start_col, start_row, start_col, start_row, start_col, start_row, start_col, start_row])
-            select = [is_gt_out_img(lot, 20, imgsize-20) for lot in gt_res]
+            select = [is_gt_out_img(lot, 10, imgsize-10) for lot in gt_res]
             gt_res = gt_res[select]
             if(gt_res.shape[0]>0):
                 gt_res = gt_res / np.array([1,imgsize,imgsize,imgsize,imgsize,imgsize,imgsize,imgsize,imgsize])
