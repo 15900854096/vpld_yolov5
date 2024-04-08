@@ -8,7 +8,7 @@ import torch.nn as nn
 import sys
 from utils.metrics import bbox_iou
 from utils.torch_utils import de_parallel
-USE_THREE_POSITIVE_SAMPLE=0
+USE_THREE_POSITIVE_SAMPLE=1
 USE_EXP_ACTIVATE_LENG=0
 
 def smooth_BCE(eps=0.1):  # https://github.com/ultralytics/yolov3/issues/238#issuecomment-598028441
@@ -130,22 +130,28 @@ class ComputeLoss:
 
         # Losses
         for i, pi in enumerate(p):  # layer index, layer predictions
-            b, a, Agj, Agi = Aindices[i]  # image, anchor, gridy, gridx
-            _, _, Bgj, Bgi = Bindices[i]  # image, anchor, gridy, gridx
+            Ab, Aa, Agj, Agi = Aindices[i]  # image, anchor, gridy, gridx
+            Bb, Ba, Bgj, Bgi = Bindices[i]  # image, anchor, gridy, gridx
 
             Atobj = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)  # target obj
             Btobj = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)  # target obj
 
-            n = b.shape[0]  # number of targets
+            na = Ab.shape[0]
+            nb = Bb.shape[0]
+            n = na + nb  # number of targets
             if n:
                 #                                    0  1  2   3    4   5   6    7    8  9  10  11   12  13  14   15   16   17
                 #target-subset of predictions #pred: Ax Ay Ac1 As1 Ac2 As2 Alen Aobj  Bx By Bc1 Bs1  Bc2 Bs2 Blen Bobj cls1 cls2
-                Apxy, Apot, _, pcls = pi[b, a, Agj, Agi].split((2, 6, 8, self.nc), 1)  
-                _, Bpxy, Bpot, _    = pi[b, a, Bgj, Bgi].split((8, 2, 6, self.nc), 1) 
+                Apxy, Apot, _, _    = pi[Ab, Aa, Agj, Agi].split((2, 6, 8, self.nc), 1)  
+                _, Bpxy, Bpot, pcls = pi[Bb, Ba, Bgj, Bgi].split((8, 2, 6, self.nc), 1) 
 
                 # Regression
-                Apxy = Apxy.sigmoid()
-                Bpxy = Bpxy.sigmoid()
+                if USE_THREE_POSITIVE_SAMPLE:
+                    Apxy = 2 * Apxy.sigmoid() - 0.5
+                    Bpxy = 2 * Bpxy.sigmoid() - 0.5
+                else:
+                    Apxy = Apxy.sigmoid()
+                    Bpxy = Bpxy.sigmoid()
                 
                 Apot = torch.cat( (Apot[:,0:4].tanh() , Apot[:,4:].sigmoid() ) , dim=1 )
                 Bpot = torch.cat( (Bpot[:,0:4].tanh() , Bpot[:,4:].sigmoid() ) , dim=1 )
@@ -170,13 +176,13 @@ class ComputeLoss:
                 #    b, a, gj, gi, iou = b[j], a[j], gj[j], gi[j], iou[j]
                 #if self.gr < 1:
                 #    iou = (1.0 - self.gr) + self.gr * iou   
-                Atobj[b, a, Agj, Agi] = 1  # iou ratio
-                Btobj[b, a, Bgj, Bgi] = 1  # iou ratio
+                Atobj[Ab, Aa, Agj, Agi] = 1  # iou ratio
+                Btobj[Bb, Ba, Bgj, Bgi] = 1  # iou ratio
 
                 # Classification
                 if self.nc > 1:  # cls loss (only if multiple classes)
                     t = torch.full_like(pcls, self.cn, device=self.device)  # targets
-                    t[range(n), tcls[i]] = self.cp
+                    t[range(nb), tcls[i]] = self.cp
                     lcls += self.BCEcls(pcls, t)  # BCE
 
 
@@ -296,8 +302,8 @@ class ComputeLoss:
                     Bt = t.repeat((5, 1, 1))[Bj]
                     Aoffsets = (torch.zeros_like(Agxy)[None] + off[:, None])[Aj]
                     Boffsets = (torch.zeros_like(Bgxy)[None] + off[:, None])[Bj]
-                    t = torch.concat((At,Bt))
-                    offsets = torch.concat((Aoffsets,Boffsets))
+                    #t = torch.concat((At,Bt))
+                    #offsets = torch.concat((Aoffsets,Boffsets))
                     # print("At.shape:",At.shape)
                     # print("Bt.shape:",Bt.shape)
                     # print("Aoffsets.shape:",Aoffsets.shape)
@@ -314,29 +320,59 @@ class ComputeLoss:
             # Define
             ##   0      1   2  3   4  5  6    7  8          9  10 11 12  13  14 15
             #img_id occupy Ax Ay c1 s1  leng c2 s2   &     Bx By c1 s1 leng c2 s2
-            tmp_b, tmp_c, tmp_Ax,tmp_Ay,tmp_Ac1, tmp_As1, tmp_Aleng, tmp_Ac2, tmp_As2, tmp_Bx, tmp_By, tmp_Bc1, tmp_Bs1, tmp_Bleng, tmp_Bc2, tmp_Bs2, a = t.chunk(17, 1)
-            bc = torch.concat((tmp_b,tmp_c), dim=1)
-            Agxy = torch.concat((tmp_Ax,tmp_Ay), dim=1)
-            Agot = torch.concat((tmp_Ac1,tmp_As1, tmp_Ac2, tmp_As2, tmp_Aleng), dim=1)
-            Bgxy = torch.concat((tmp_Bx,tmp_By), dim=1)
-            Bgot = torch.concat((tmp_Bc1,tmp_Bs1, tmp_Bc2, tmp_Bs2, tmp_Bleng), dim=1)
-            
-            a, (b, c) = a.long().view(-1), bc.long().T  # anchors, imageID, class
-            
-            Agij = (Agxy - offsets).long()
-            Agi, Agj = Agij.T  # grid indices
+            if USE_THREE_POSITIVE_SAMPLE:
+                tmp_Ab, tmp_Ac, tmp_Ax,tmp_Ay,tmp_Ac1, tmp_As1, tmp_Aleng, tmp_Ac2, tmp_As2, _, _, _, _, _, _, _, Aa = At.chunk(17, 1)
+                tmp_Bb, tmp_Bc, _, _, _, _, _, _, _, tmp_Bx, tmp_By, tmp_Bc1, tmp_Bs1, tmp_Bleng, tmp_Bc2, tmp_Bs2, Ba = Bt.chunk(17, 1)
+                Abc = torch.concat((tmp_Ab,tmp_Ac), dim=1)
+                Bbc = torch.concat((tmp_Bb,tmp_Bc), dim=1)
+                Agxy = torch.concat((tmp_Ax,tmp_Ay), dim=1)
+                Agot = torch.concat((tmp_Ac1,tmp_As1, tmp_Ac2, tmp_As2, tmp_Aleng), dim=1)
+                Bgxy = torch.concat((tmp_Bx,tmp_By), dim=1)
+                Bgot = torch.concat((tmp_Bc1,tmp_Bs1, tmp_Bc2, tmp_Bs2, tmp_Bleng), dim=1)
+                
+                Aa, (Ab, Ac) = Aa.long().view(-1), Abc.long().T  # anchors, imageID, class
+                Ba, (Bb, Bc) = Ba.long().view(-1), Bbc.long().T  # anchors, imageID, class
+                
+                Agij = (Agxy - Aoffsets).long()
+                Agi, Agj = Agij.T  # grid indices
 
-            Bgij = (Bgxy - offsets).long()
-            Bgi, Bgj = Bgij.T  # grid indices
+                Bgij = (Bgxy - Boffsets).long()
+                Bgi, Bgj = Bgij.T  # grid indices
+                
+                # Append
+                Aindices.append((Ab, Aa, Agj.clamp_(0, shape[2] - 1), Agi.clamp_(0, shape[3] - 1)))  # image, anchor, grid
+                Bindices.append((Bb, Ba, Bgj.clamp_(0, shape[2] - 1), Bgi.clamp_(0, shape[3] - 1)))  # image, anchor, grid
 
-            # Append
-            Aindices.append((b, a, Agj.clamp_(0, shape[2] - 1), Agi.clamp_(0, shape[3] - 1)))  # image, anchor, grid
-            Bindices.append((b, a, Bgj.clamp_(0, shape[2] - 1), Bgi.clamp_(0, shape[3] - 1)))  # image, anchor, grid
+                Atbox.append(torch.cat((Agxy - Agij, Agot), 1))  # box
+                Btbox.append(torch.cat((Bgxy - Bgij, Bgot), 1))  # box
 
-            Atbox.append(torch.cat((Agxy - Agij, Agot), 1))  # box
-            Btbox.append(torch.cat((Bgxy - Bgij, Bgot), 1))  # box
+                anch.append(anchors[Aa])  # anchors
+                tcls.append(Bc)  # class
 
-            anch.append(anchors[a])  # anchors
-            tcls.append(c)  # class
+            else:
+                tmp_b, tmp_c, tmp_Ax,tmp_Ay,tmp_Ac1, tmp_As1, tmp_Aleng, tmp_Ac2, tmp_As2, tmp_Bx, tmp_By, tmp_Bc1, tmp_Bs1, tmp_Bleng, tmp_Bc2, tmp_Bs2, a = t.chunk(17, 1)
+                bc = torch.concat((tmp_b,tmp_c), dim=1)
+                Agxy = torch.concat((tmp_Ax,tmp_Ay), dim=1)
+                Agot = torch.concat((tmp_Ac1,tmp_As1, tmp_Ac2, tmp_As2, tmp_Aleng), dim=1)
+                Bgxy = torch.concat((tmp_Bx,tmp_By), dim=1)
+                Bgot = torch.concat((tmp_Bc1,tmp_Bs1, tmp_Bc2, tmp_Bs2, tmp_Bleng), dim=1)
+                
+                a, (b, c) = a.long().view(-1), bc.long().T  # anchors, imageID, class
+                
+                Agij = (Agxy - offsets).long()
+                Agi, Agj = Agij.T  # grid indices
+
+                Bgij = (Bgxy - offsets).long()
+                Bgi, Bgj = Bgij.T  # grid indices
+
+                # Append
+                Aindices.append((b, a, Agj.clamp_(0, shape[2] - 1), Agi.clamp_(0, shape[3] - 1)))  # image, anchor, grid
+                Bindices.append((b, a, Bgj.clamp_(0, shape[2] - 1), Bgi.clamp_(0, shape[3] - 1)))  # image, anchor, grid
+
+                Atbox.append(torch.cat((Agxy - Agij, Agot), 1))  # box
+                Btbox.append(torch.cat((Bgxy - Bgij, Bgot), 1))  # box
+
+                anch.append(anchors[a])  # anchors
+                tcls.append(c)  # class
 
         return tcls, Atbox, Aindices, Btbox, Bindices, anch

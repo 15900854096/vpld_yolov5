@@ -33,7 +33,7 @@ try:
     import thop  # for FLOPs computation
 except ImportError:
     thop = None
-USE_THREE_POSITIVE_SAMPLE=0
+USE_THREE_POSITIVE_SAMPLE=1
 USE_EXP_ACTIVATE_LENG = 0
 
 class Detect(nn.Module):
