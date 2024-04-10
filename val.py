@@ -224,6 +224,7 @@ def run(
             preds = non_max_suppression(preds,
                                         conf_thres,
                                         iou_thres,
+                                        imgsz,
                                         labels=lb,
                                         multi_label=True,
                                         agnostic=single_cls,

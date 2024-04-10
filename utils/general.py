@@ -858,6 +858,7 @@ def non_max_suppression(
         prediction,
         conf_thres=0.25,
         iou_thres=0.45,
+        imgsz=640,
         classes=None,
         agnostic=False,
         multi_label=False,
@@ -943,8 +944,8 @@ def non_max_suppression(
                 Acls = list(Ap[16:])
                 point0=(Ap[0],Ap[1])
                 point1=(Bp[8],Bp[9])
-                Alen = Ap[6]*640
-                Blen = Bp[14]*640
+                Alen = Ap[6]*imgsz
+                Blen = Bp[14]*imgsz
                 meanlen = (Alen+Blen)/2
                 mean_conf = (Ap[7]+Bp[15])/2
                 point0_dest=( point0[0]+Alen*Ap[4], point0[1]+Alen*Ap[5]) 
@@ -963,7 +964,7 @@ def non_max_suppression(
                 Adire_Bdire_angle = math.acos( cosvalue )
                 
                 if(disPts(point0 ,point1_dest)<meanlen*0.3 and disPts(point0_dest ,point1)<meanlen*0.3 and Adire_Bdire_angle<PI/18):
-                    abdis = disPts(point0 ,point1)/640
+                    abdis = disPts(point0 ,point1)/imgsz
                     abangle = math.atan2(point1[1]-point0[1], point1[0]-point0[0])
 
                     bcangle = math.atan2(Bp[11], Bp[10])
@@ -1045,7 +1046,7 @@ def non_max_suppression(
         c = x[:, 8:9] * (0 if agnostic else max_wh)  # classes
         boxes_pt, boxoth, scores = x[:, :2] + c, x[:, 2:7], x[:, 8]  # boxes (offset by class), scores
         boxes = torch.cat((boxes_pt, boxoth), 1)
-        i = nms(boxes, iou_thres) # torchvision.ops.nms(boxes, scores, iou_thres)  # NMS
+        i = nms(boxes, imgsz, iou_thres) # torchvision.ops.nms(boxes, scores, iou_thres)  # NMS
         i = i[:max_det]  # limit detections
         if merge and (1 < n < 3E3):  # Merge NMS (boxes merged using weighted mean)  # never use it
             # update boxes as boxes(i,4) = weights(i,n) * boxes(n,4)
@@ -1206,18 +1207,18 @@ if Path(inspect.stack()[0].filename).parent.parent.as_posix() in inspect.stack()
 
 # Variables ------------------------------------------------------------------------------------------------------------
 
-def nms(boxes,nms_thresh):
+def nms(boxes, imgsz=640, nms_thresh=0.1):
     #           0 1  2   3    4    5    6  
     #prediction:x y len cos1 sin1 cos2 sin2 
     tmp = torch.zeros(boxes.shape[0],8,device=boxes.device)
     tmp[:,0:1] = boxes[:,0:1] # x1
     tmp[:,1:2] = boxes[:,1:2] # y1
     
-    tmp[:,2:3] = tmp[:,0:1] + boxes[:,2:3] * boxes[:,3:4] * 640 # x2
-    tmp[:,3:4] = tmp[:,1:2] + boxes[:,2:3] * boxes[:,4:5] * 640 # y2
+    tmp[:,2:3] = tmp[:,0:1] + boxes[:,2:3] * boxes[:,3:4] * imgsz # x2
+    tmp[:,3:4] = tmp[:,1:2] + boxes[:,2:3] * boxes[:,4:5] * imgsz # y2
     
-    tmp[:,4:5] = tmp[:,2:3] + boxes[:,5:6] * 640 * 0.25 # x3
-    tmp[:,5:6] = tmp[:,3:4] + boxes[:,6:7] * 640 * 0.25 # y3
+    tmp[:,4:5] = tmp[:,2:3] + boxes[:,5:6] * imgsz * 0.25 # x3
+    tmp[:,5:6] = tmp[:,3:4] + boxes[:,6:7] * imgsz * 0.25 # y3
     
     tmp[:,6:7] = tmp[:,0:1] + tmp[:,4:5] - tmp[:,2:3] # x4
     tmp[:,7:8] = tmp[:,1:2] + tmp[:,5:6] - tmp[:,3:4] # y4
