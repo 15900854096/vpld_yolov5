@@ -1008,10 +1008,12 @@ def non_max_suppression(
             conf, j = x[:, 8:mi].max(1, keepdim=True)
             x = torch.cat((box, conf, j.float(), mask), 1)[conf.view(-1) > conf_thres]
         '''
-        
+        # 0 1  2   3  4  5  6  7    8   9
+        # x y len c1 s1 c2 s2 conf cls cls2
+        new_mi = 10       
         box = x[:, :7]
-        mask = x[:, mi:]
-        conf, j = x[:, 8:mi].max(1, keepdim=True)
+        mask = x[:, new_mi:]
+        conf, j = x[:, 8:new_mi].max(1, keepdim=True)
         x = torch.cat((box, conf, j.float(), mask), 1)[conf.view(-1) > conf_thres] 
         # 0 1  2   3  4  5  6  7    8
         # x y len c1 s1 c2 s2 conf cls
@@ -1032,7 +1034,8 @@ def non_max_suppression(
 
         # Batched NMS
         c = x[:, 8:9] * (0 if agnostic else max_wh)  # classes
-        boxes, scores = x[:, :7] + c, x[:, 8]  # boxes (offset by class), scores
+        boxes_pt, boxoth, scores = x[:, :2] + c, x[:, 2:7], x[:, 8]  # boxes (offset by class), scores
+        boxes = torch.cat((boxes_pt, boxoth), 1)
         i = nms(boxes, iou_thres) # torchvision.ops.nms(boxes, scores, iou_thres)  # NMS
         i = i[:max_det]  # limit detections
         if merge and (1 < n < 3E3):  # Merge NMS (boxes merged using weighted mean)  # never use it

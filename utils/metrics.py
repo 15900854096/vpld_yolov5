@@ -361,6 +361,7 @@ def plot_mc_curve(px, py, save_dir=Path('mc_curve.png'), names=(), xlabel='Confi
     plt.close(fig)
 
 import shapely
+import sys
 from shapely.geometry import Polygon, MultiPoint
 def bbox_iou_eval(box1, box2):
     box1 = np.array(box1.cpu()).reshape(4, 2)  # 四边形二维坐标表示

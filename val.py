@@ -189,7 +189,7 @@ def run(
     if isinstance(names, (list, tuple)):  # old format
         names = dict(enumerate(names))
     class_map = coco80_to_coco91_class() if is_coco else list(range(1000))
-    s = ('%22s' + '%11s' * 7) % ('Class', 'Images', 'Instances', 'P', 'R', 'mAP50', 'mAP95', 'mAP50-95')
+    s = ('%22s' + '%11s' * 8) % ('Class', 'Images', 'Instances', 'P', 'R', 'mAP50', 'mAP90', 'mAP95', 'mAP50-95')
     tp, fp, p, r, f1, mp, mr, map50, ap50, map95, ap95, map = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     dt = Profile(), Profile(), Profile()  # profiling times
     loss = torch.zeros(3, device=device)
@@ -312,20 +312,20 @@ def run(
     stats = [torch.cat(x, 0).cpu().numpy() for x in zip(*stats)]  # to numpy
     if len(stats) and stats[0].any():
         tp, fp, p, r, f1, ap, ap_class = ap_per_class(*stats, plot=plots, save_dir=save_dir, names=names)
-        ap50, ap95, ap = ap[:, 0],ap[:, 9], ap.mean(1)  # AP@0.5, AP@0.5:0.95
-        mp, mr, map50, map95, map = p.mean(), r.mean(), ap50.mean(), ap95.mean(), ap.mean()
+        ap50, ap90, ap95, ap = ap[:, 0], ap[:, 8] ,ap[:, 9], ap.mean(1)  # AP@0.5, AP@0.5:0.95
+        mp, mr, map50, map90, map95, map = p.mean(), r.mean(), ap50.mean(), ap90.mean(), ap95.mean(), ap.mean()
     nt = np.bincount(stats[3].astype(int), minlength=nc)  # number of targets per class
 
     # Print results
-    pf = '%22s' + '%11i' * 2 + '%11.3g' * 5  # print format
-    LOGGER.info(pf % ('all', seen, nt.sum(), mp, mr, map50, map95, map))
+    pf = '%22s' + '%11i' * 2 + '%11.3g' * 6  # print format
+    LOGGER.info(pf % ('all', seen, nt.sum(), mp, mr, map50, map90, map95, map))
     if nt.sum() == 0:
         LOGGER.warning(f'WARNING ⚠️ no labels found in {task} set, can not compute metrics without labels')
 
     # Print results per class
     if (verbose or (nc < 50 and not training)) and nc > 1 and len(stats):
         for i, c in enumerate(ap_class):
-            LOGGER.info(pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap95[i], ap[i]))
+            LOGGER.info(pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap90[i], ap95[i], ap[i]))
 
     # Print speeds
     t = tuple(x.t / seen * 1E3 for x in dt)  # speeds per image

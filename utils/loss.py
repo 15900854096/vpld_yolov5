@@ -6,6 +6,7 @@ Loss functions
 import torch
 import torch.nn as nn
 import sys
+import time
 from utils.metrics import bbox_iou
 from utils.torch_utils import de_parallel
 USE_THREE_POSITIVE_SAMPLE=1
@@ -374,5 +375,12 @@ class ComputeLoss:
 
                 anch.append(anchors[a])  # anchors
                 tcls.append(c)  # class
-
+        # time.sleep(10)
+        # print("tcls: ",tcls)
+        # print("Atbox: ",Atbox)
+        # print("Aindices: ",Aindices)
+        # print("Btbox: ",Btbox)
+        # print("Bindices: ",Bindices)
+        # print("anch: ",anch)
+        # sys.exit()
         return tcls, Atbox, Aindices, Btbox, Bindices, anch

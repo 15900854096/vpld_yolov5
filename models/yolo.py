@@ -89,6 +89,11 @@ class Detect(nn.Module):
                     Aobj = Aobj.sigmoid() 
                     Bobj = Bobj.sigmoid()
                     class12 = class12.sigmoid()
+                    
+                    #padding not care about class
+                    if 1:
+                        class12[:,:,:,:,0] = 1
+                        class12[:,:,:,:,1] = 0
                    
                     y = torch.cat((Axy, Ac1s1c2s2, Alen, Aobj, Bxy, Bc1s1c2s2, Blen, Bobj, class12), 4)
                 z.append(y.view(bs, self.na * nx * ny, self.no)) #nhwc
