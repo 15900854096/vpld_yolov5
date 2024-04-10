@@ -927,8 +927,17 @@ def non_max_suppression(
         if not Bx.shape[0]:
             continue
 
+        Ax = Ax[Ax[:, 7].argsort(descending=True)]
+        Bx = Bx[Bx[:, 15].argsort(descending=True)]
         Ax=Ax.cpu().numpy()
         Bx=Bx.cpu().numpy()
+        
+        #Apoint Bpoint use nms   
+        Ax_idx = nms_by_distance(Ax)
+        Bx_idx = nms_by_distance(Bx)
+        Ax=Ax[Ax_idx]
+        Bx=Bx[Bx_idx]
+        
         for Apidx, Ap in enumerate(Ax):
             for Bpidx, Bp in enumerate(Bx):
                 Acls = list(Ap[16:])
@@ -1232,4 +1241,30 @@ def nms(boxes,nms_thresh):
     return keep_indices
 
 def disPts(A ,B):
-    return math.sqrt(math.pow(A[0]-B[0],2) + math.pow(A[1]-B[1],2) )    
+    return math.sqrt(math.pow(A[0]-B[0],2) + math.pow(A[1]-B[1],2) )
+
+def nms_by_distance(boxes,nms_thresh=50):
+    #           0 1  2   3    4    5    6  
+    #prediction:x y len cos1 sin1 cos2 sin2 
+    tmp = np.zeros((boxes.shape[0], 2))
+    tmp[:,0:1] = boxes[:,0:1] # x1
+    tmp[:,1:2] = boxes[:,1:2] # y1
+    boxes = tmp
+    #print("tmp: ",tmp)
+    keep_indices = []
+    # 从大到小
+    order = np.arange(0,boxes.shape[0])
+    while order.shape[0] > 0:
+        i = order[0]
+        keep_indices.append(i)
+        not_overlaps = []
+        for j in range(len(order)):
+            if order[j] != i:
+                dist = disPts(boxes[i] ,boxes[order[j]]) #bbox_iou_eval(boxes[i],boxes[order[j]])
+                if dist > nms_thresh:
+                    not_overlaps.append(j)
+        order = order[not_overlaps]
+    keep_boxes = boxes[[i.item() for i in keep_indices]]
+    #print(keep_indices)
+    #sys.exit()
+    return keep_indices

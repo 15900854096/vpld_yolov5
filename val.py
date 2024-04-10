@@ -254,9 +254,9 @@ def run(
             
             
             #translation
-            leng = 250
+            leng = 200
             if(predn[0,2:3]*shapes[si][0][0]>200):
-                leng=100
+                leng=50
             # 0 1  2   3  4  5  6  7    8
             # x y len c1 s1 c2 s2 conf cls
             tmp=torch.zeros(predn.shape[0],8,device=device)
