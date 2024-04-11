@@ -176,8 +176,12 @@ def run(
                         p1 = (round(float(x)) , round(float(y)))
                         p2 = (round(float(x+leng*c1)) , round(float(y+leng*s1)))
                         p3 = (round(float(x+leng*c1+100*c2)) , round(float(y+leng*s1+100*s2)))
-                        cv2.arrowedLine(im0, p1, p2, (0,255,0), 2, 4)
-                        cv2.arrowedLine(im0, p2, p3, (0,255,0), 2, 4)                        
+                        if(cls==0):
+                            color = (0,255,0)
+                        else:
+                            color = (0,0,255)    
+                        cv2.arrowedLine(im0, p1, p2, color, 2, 4)
+                        cv2.arrowedLine(im0, p2, p3, color, 2, 4)                        
                         
                         #c = int(cls)  # integer class
                         #label = None if hide_labels else (names[c] if hide_conf else f'{names[c]} {conf:.2f}')

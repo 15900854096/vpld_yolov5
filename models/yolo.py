@@ -91,7 +91,7 @@ class Detect(nn.Module):
                     class12 = class12.sigmoid()
                     
                     #padding not care about class
-                    if 1:
+                    if 0:
                         class12[:,:,:,:,0] = 1
                         class12[:,:,:,:,1] = 0
                    

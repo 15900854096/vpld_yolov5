@@ -105,7 +105,7 @@ class ComputeLoss:
 
         # Class label smoothing https://arxiv.org/pdf/1902.04103.pdf eqn 3
         self.cp, self.cn = smooth_BCE(eps=h.get('label_smoothing', 0.0))  # positive, negative BCE targets
-
+        
         # Focal loss
         g = h['fl_gamma']  # focal loss gamma
         if g > 0:
@@ -137,6 +137,9 @@ class ComputeLoss:
             Atobj = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)  # target obj
             Btobj = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)  # target obj
 
+            #Atobj = torch.full_like(Atobj, self.cn, device=self.device)
+            #Btobj = torch.full_like(Btobj, self.cn, device=self.device)
+            
             na = Ab.shape[0]
             nb = Bb.shape[0]
             n = na + nb  # number of targets
@@ -177,8 +180,8 @@ class ComputeLoss:
                 #    b, a, gj, gi, iou = b[j], a[j], gj[j], gi[j], iou[j]
                 #if self.gr < 1:
                 #    iou = (1.0 - self.gr) + self.gr * iou   
-                Atobj[Ab, Aa, Agj, Agi] = 1  # iou ratio
-                Btobj[Bb, Ba, Bgj, Bgi] = 1  # iou ratio
+                Atobj[Ab, Aa, Agj, Agi] = self.cp  # iou ratio
+                Btobj[Bb, Ba, Bgj, Bgi] = self.cp  # iou ratio
 
                 # Classification
                 if self.nc > 1:  # cls loss (only if multiple classes)
@@ -349,6 +352,10 @@ class ComputeLoss:
 
                 anch.append(anchors[Aa])  # anchors
                 tcls.append(Bc)  # class
+                # print("Btbox: ", Btbox)
+                # print("Bindices: ", Bindices)
+                # print("Bc: ",Bc)
+                # sys.exit()
 
             else:
                 tmp_b, tmp_c, tmp_Ax,tmp_Ay,tmp_Ac1, tmp_As1, tmp_Aleng, tmp_Ac2, tmp_As2, tmp_Bx, tmp_By, tmp_Bc1, tmp_Bs1, tmp_Bleng, tmp_Bc2, tmp_Bs2, a = t.chunk(17, 1)

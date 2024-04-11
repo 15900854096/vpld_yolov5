@@ -853,7 +853,7 @@ def clip_segments(segments, shape):
         segments[:, 0] = segments[:, 0].clip(0, shape[1])  # x
         segments[:, 1] = segments[:, 1].clip(0, shape[0])  # y
 
-
+ccnt = 10
 def non_max_suppression(
         prediction,
         conf_thres=0.25,
@@ -943,7 +943,7 @@ def non_max_suppression(
         
         for Apidx, Ap in enumerate(Ax):
             for Bpidx, Bp in enumerate(Bx):
-                Acls = list(Ap[16:])
+                cls = list(Bp[16:])
                 point0=(Ap[0],Ap[1])
                 point1=(Bp[8],Bp[9])
                 Alen = Ap[6]*imgsz
@@ -972,8 +972,8 @@ def non_max_suppression(
                     bcangle = math.atan2(Bp[11], Bp[10])
                     adangle = math.atan2(Ap[3],  Ap[2])
                     tm = math.atan2((Bp[11]+Ap[3])/2, (Bp[10]+Ap[2])/2)
-
-                    npy = list([point0[0], point0[1], abdis, math.cos(abangle), math.sin(abangle), math.cos(tm), math.sin(tm), mean_conf]) + Acls
+                    #print(cls)
+                    npy = list([point0[0], point0[1], abdis, math.cos(abangle), math.sin(abangle), math.cos(tm), math.sin(tm), mean_conf]) + cls
                     npy = np.array(npy)
                     npy=torch.tensor(npy).to(prediction.device)
                     temp.append(npy)
@@ -1003,7 +1003,8 @@ def non_max_suppression(
             continue
         x = torch.stack(temp,dim=0)
         
-
+        # 0 1  2  3  4  5  6   7    8    9
+        # x y len c1 s1 c2 s2 obj cls1 cls2
         # Compute conf       
         x[:, 8:] *= x[:, 7:8]  # conf = obj_conf * cls_conf
 
@@ -1064,7 +1065,11 @@ def non_max_suppression(
         if (time.time() - t) > time_limit:
             LOGGER.warning(f'WARNING ⚠️ NMS time limit {time_limit:.3f}s exceeded')
             break  # time limit exceeded
-
+    # print(output)
+    # global ccnt
+    # ccnt=ccnt-1
+    # if(ccnt==0):
+    #     sys.exit()
     return output
 
 

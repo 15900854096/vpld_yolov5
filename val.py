@@ -279,8 +279,9 @@ def run(
             labels[:,6:7] = (labels[:,6:7] - labels[:,4:5])/oldleng*leng + labels[:,4:5]
             
             #padding: cal map not care about label whether right
-            labels[:,0:1] = 0
-            predn[:,7:8] = 0
+            if 0:
+                labels[:,0:1] = 0
+                predn[:,7:8] = 0
             
             # Evaluate
             if nl:
