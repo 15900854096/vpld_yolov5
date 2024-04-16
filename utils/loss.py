@@ -8,10 +8,18 @@ import torch.nn as nn
 import sys
 import time
 import yaml
+import os
+from pathlib import Path
 from utils.metrics import bbox_iou
 from utils.torch_utils import de_parallel
 
-with open(ROOT / 'data/hyps/hyp.scratch-low.yaml', errors='ignore') as f:
+FILE = Path(__file__).resolve()
+ROOT = FILE.parents[0]  # YOLOv5 root directory
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))  # add ROOT to PATH
+ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
+
+with open(ROOT / '../data/hyps/hyp.scratch-low.yaml', errors='ignore') as f:
     hyp = yaml.safe_load(f)
 
 def smooth_BCE(eps=0.1):  # https://github.com/ultralytics/yolov3/issues/238#issuecomment-598028441
