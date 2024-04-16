@@ -11,9 +11,9 @@ warmup_epochs: 3.0  # warmup epochs (fractions ok)
 warmup_momentum: 0.8  # warmup initial momentum
 warmup_bias_lr: 0.1  # warmup initial bias lr
 box: 1  # box loss gain
-cls: 0.8  # cls loss gain
+cls: 1  # cls loss gain
 cls_pw: 1.0  # cls BCELoss positive_weight
-obj: 5  # obj loss gain (scale with pixels)
+obj: 1  # obj loss gain (scale with pixels)
 obj_pw: 1.0  # obj BCELoss positive_weight
 iou_t: 0.20  # IoU training threshold
 anchor_t: 2.0  # anchor-multiple threshold
@@ -34,3 +34,7 @@ resize: 0.1    # image resize (probability)
 mosaic: 0.0  # image mosaic (probability)
 mixup: 0.0  # image mixup (probability)
 copy_paste: 0.0  # segment copy-paste (probability)
+
+
+NOT_CAREABOUT_LOT_TYPE: 0 #是否需要不关注库位类型，来测试库位的mAP
+USE_THREE_POSITIVE_SAMPLE: 1 #是否需要把一个正样本扩充为三个样本来预测，此策略来自于yolov5

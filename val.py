@@ -25,7 +25,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-
+import yaml
 import numpy as np
 import torch
 from tqdm import tqdm
@@ -46,6 +46,8 @@ from utils.metrics import ConfusionMatrix, ap_per_class, box_iou, box_iou_poly
 from utils.plots import output_to_target, plot_images, plot_val_study
 from utils.torch_utils import select_device, smart_inference_mode
 
+with open(ROOT / 'data/hyps/hyp.scratch-low.yaml', errors='ignore') as f:
+    hyp = yaml.safe_load(f)
 
 def save_one_txt(predn, save_conf, shape, file):
     # Save one txt result
@@ -279,7 +281,7 @@ def run(
             labels[:,6:7] = (labels[:,6:7] - labels[:,4:5])/oldleng*leng + labels[:,4:5]
             
             #padding: cal map not care about label whether right
-            if 0:
+            if hyp["NOT_CAREABOUT_LOT_TYPE"]:
                 labels[:,0:1] = 0
                 predn[:,7:8] = 0
             

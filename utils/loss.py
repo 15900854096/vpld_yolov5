@@ -7,10 +7,12 @@ import torch
 import torch.nn as nn
 import sys
 import time
+import yaml
 from utils.metrics import bbox_iou
 from utils.torch_utils import de_parallel
-USE_THREE_POSITIVE_SAMPLE=1
-USE_EXP_ACTIVATE_LENG=0
+
+with open(ROOT / 'data/hyps/hyp.scratch-low.yaml', errors='ignore') as f:
+    hyp = yaml.safe_load(f)
 
 def smooth_BCE(eps=0.1):  # https://github.com/ultralytics/yolov3/issues/238#issuecomment-598028441
     # return positive, negative label smoothing BCE targets
@@ -150,7 +152,7 @@ class ComputeLoss:
                 _, Bpxy, Bpot, pcls = pi[Bb, Ba, Bgj, Bgi].split((8, 2, 6, self.nc), 1) 
 
                 # Regression
-                if USE_THREE_POSITIVE_SAMPLE:
+                if hyp["USE_THREE_POSITIVE_SAMPLE"]:
                     Apxy = 2 * Apxy.sigmoid() - 0.5
                     Bpxy = 2 * Bpxy.sigmoid() - 0.5
                 else:
@@ -287,7 +289,7 @@ class ComputeLoss:
                 j = torch.max(r, 1 / r).max(2)[0] > -1000000000
                 t = t[j]
                     
-                if USE_THREE_POSITIVE_SAMPLE:
+                if hyp["USE_THREE_POSITIVE_SAMPLE"]:
                     Agxy = t[:, 2:4]  # grid xy
                     Bgxy = t[:, 9:11]  # grid xy
                     Agxi = gain[[2, 3]] - Agxy  # inverse
@@ -324,7 +326,7 @@ class ComputeLoss:
             # Define
             ##   0      1   2  3   4  5  6    7  8          9  10 11 12  13  14 15
             #img_id occupy Ax Ay c1 s1  leng c2 s2   &     Bx By c1 s1 leng c2 s2
-            if USE_THREE_POSITIVE_SAMPLE:
+            if hyp["USE_THREE_POSITIVE_SAMPLE"]:
                 tmp_Ab, tmp_Ac, tmp_Ax,tmp_Ay,tmp_Ac1, tmp_As1, tmp_Aleng, tmp_Ac2, tmp_As2, _, _, _, _, _, _, _, Aa = At.chunk(17, 1)
                 tmp_Bb, tmp_Bc, _, _, _, _, _, _, _, tmp_Bx, tmp_By, tmp_Bc1, tmp_Bs1, tmp_Bleng, tmp_Bc2, tmp_Bs2, Ba = Bt.chunk(17, 1)
                 Abc = torch.concat((tmp_Ab,tmp_Ac), dim=1)

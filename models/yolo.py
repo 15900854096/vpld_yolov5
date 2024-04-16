@@ -13,6 +13,7 @@ import platform
 import sys
 from copy import deepcopy
 from pathlib import Path
+import yaml
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[1]  # YOLOv5 root directory
@@ -33,8 +34,10 @@ try:
     import thop  # for FLOPs computation
 except ImportError:
     thop = None
-USE_THREE_POSITIVE_SAMPLE=1
-USE_EXP_ACTIVATE_LENG = 0
+
+with open(ROOT / 'data/hyps/hyp.scratch-low.yaml', errors='ignore') as f:
+    hyp = yaml.safe_load(f)
+
 
 class Detect(nn.Module):
     # YOLOv5 Detect head for detection models
@@ -75,7 +78,7 @@ class Detect(nn.Module):
                 else:  # Detect (boxes only)
                     #target-subset of predictions #pred: Ax Ay Ac1 As1 Ac2 As2 Alen Aobj  Bx By Bc1 Bs1  Bc2 Bs2 Blen Bobj cls1 cls2
                     Axy, Ac1s1c2s2, Alen, Aobj, Bxy, Bc1s1c2s2, Blen, Bobj, class12 = x[i].split((2, 4, 1, 1, 2, 4, 1, 1, self.nc), 4)
-                    if USE_THREE_POSITIVE_SAMPLE:
+                    if hyp["USE_THREE_POSITIVE_SAMPLE"]:
                         Axy = (Axy.sigmoid()*2  + self.grid[i]) * self.stride[i]
                         Bxy = (Bxy.sigmoid()*2  + self.grid[i]) * self.stride[i]  # xy
                     else:
@@ -91,7 +94,7 @@ class Detect(nn.Module):
                     class12 = class12.sigmoid()
                     
                     #padding not care about class
-                    if 0:
+                    if hyp["NOT_CAREABOUT_LOT_TYPE"]:
                         class12[:,:,:,:,0] = 1
                         class12[:,:,:,:,1] = 0
                    
@@ -107,7 +110,7 @@ class Detect(nn.Module):
         shape_ = 1, self.na, ny, nx, 1  # grid shape len shape
         y, x = torch.arange(ny, device=d, dtype=t), torch.arange(nx, device=d, dtype=t)
         yv, xv = torch.meshgrid(y, x, indexing='ij') if torch_1_10 else torch.meshgrid(y, x)  # torch>=0.7 compatibility
-        if USE_THREE_POSITIVE_SAMPLE:
+        if hyp["USE_THREE_POSITIVE_SAMPLE"]:
             grid = torch.stack((xv, yv), 2).expand(shape) - 0.5  # add grid offset, i.e. y = 2.0 * x - 0.5
         else:
             grid = torch.stack((xv, yv), 2).expand(shape)  # add grid offset, i.e. y = x 
