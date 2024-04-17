@@ -520,3 +520,104 @@ def image_gt_data_resize_all(img, gt):
         else:
             gt_res = gt
         return img_res, gt_res
+    
+    
+def sunlight(img):
+    #获取图像行和列
+    rows, cols = img.shape[:2]
+    #设置中心点
+    centerX = random.randint(0,rows)
+    centerY =  random.randint(0,cols)
+    #print(centerX,centerY) 
+    radius = 150 
+    #设置光照强度
+    strength = 150
+    
+    #图像光照特效
+    for i in range(rows):
+        for j in range(cols):
+            #计算当前点到光照中心距离(平面坐标系中两点之间的距离)
+            distance = math.pow((centerY-j), 2) + math.pow((centerX-i), 2)
+            #获取原始图像
+            B =  img[i,j][0]
+            G =  img[i,j][1]
+            R = img[i,j][2]
+            if (distance < radius*radius):
+                #按照距离大小计算增强的光照值
+                result = (int)(strength*( 1.0 - math.sqrt(distance) / radius ))
+                B = img[i,j][0] + result
+                G = img[i,j][1] + result
+                R = img[i,j][2] + result
+                #判断边界 防止越界
+                B = min(255, max(0, B))
+                G = min(255, max(0, G))
+                R = min(255, max(0, R))
+                img[i,j] = np.uint8((B, G, R))
+            else:
+                img[i,j] = np.uint8((B, G, R))
+    return img 
+
+def rain(img):
+    value = random.randint(10,500)
+    length = random.randint(10,50) # 对角矩阵大小，表示雨滴的长度
+    angle = random.randint(-30,30) # 倾斜的角度，逆时针为正
+    w = random.randint(1,5)//2*2+1 # 雨滴大小
+    beta = np.random.uniform(0.1, 0.8)
+    #print(value,length,angle,w,beta)
+    
+    #noise
+    noise = np.random.uniform(0, 256, img.shape[0:2])
+    # 控制噪声水平，取浮点数，只保留最大的一部分作为噪声
+    v = value * 0.01
+    noise[np.where(noise < (256 - v))] = 0
+    # 噪声做初次模糊
+    k = np.array([[0, 0.1, 0],
+                  [0.1, 8, 0.1],
+                  [0, 0.1, 0]])
+    noise = cv2.filter2D(noise, -1, k)
+    
+    #blurred
+    #这里由于对角阵自带45度的倾斜，逆时针为正，所以加了-45度的误差，保证开始为正
+    trans = cv2.getRotationMatrix2D((length/2, length/2), angle-45, 1-length/100.0)  
+    dig = np.diag(np.ones(length))   #生成对焦矩阵
+    k = cv2.warpAffine(dig, trans, (length, length))  #生成模糊核
+    k = cv2.GaussianBlur(k,(w,w),0)    #高斯模糊这个旋转后的对角核，使得雨有宽度
+    blurred = cv2.filter2D(noise, -1, k)    #用刚刚得到的旋转后的核，进行滤波
+    cv2.normalize(blurred, blurred, 0, 255, cv2.NORM_MINMAX) #转换到0-255区间
+    blurred = np.array(blurred, dtype=np.uint8)
+    
+    rain = np.expand_dims(blurred,2)
+    rain_effect = np.concatenate((img,rain),axis=2)  #add alpha channel
+    rain_result = img.copy()    #拷贝一个掩膜
+    rain = np.array(rain,dtype=np.float32)     #数据类型变为浮点数，后面要叠加，防止数组越界要用32位
+    rain_result[:,:,0] = rain_result[:,:,0] * (255-rain[:,:,0])/255.0 + beta*rain[:,:,0]
+    rain_result[:,:,1] = rain_result[:,:,1] * (255-rain[:,:,0])/255 + beta*rain[:,:,0] 
+    rain_result[:,:,2] = rain_result[:,:,2] * (255-rain[:,:,0])/255 + beta*rain[:,:,0]
+    
+    return rain_result
+
+
+def AddGaussianNoise(img):
+    mean = random.randint(0,20)
+    var = random.randint(5,15)
+    #print(mean,var)
+    img = img.astype(np.float32)
+    noise =  np.random.normal(mean,var,img.shape)#产生相同shape的噪声数组
+    img=img+noise  
+    img[img>255]=255
+    img[img<0]=0   
+    return img.astype(np.uint8)
+
+def AddPepperSaltNoise(img):
+    percent = np.random.uniform(0.0, 0.05)
+    #print(percent)
+    img = img.astype(np.float32)
+    for i in range(int(percent*img.shape[0]*img.shape[1])):
+        randX=random.randint(0,img.shape[0]-1)
+        randY=random.randint(0,img.shape[1]-1)
+        randZ=random.randint(0,img.shape[2]-1)
+        if random.uniform(0,1)<=0.5:
+            img[randX,randY,randZ]=0
+        else:
+            img[randX,randY,randZ]=255          
+    return img.astype(np.uint8)

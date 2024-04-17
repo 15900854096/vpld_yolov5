@@ -29,7 +29,7 @@ from torch.utils.data import DataLoader, Dataset, dataloader, distributed
 from tqdm import tqdm
 
 from utils.augmentations import (Albumentations, augment_hsv, classify_albumentations, classify_transforms, copy_paste,
-                                 letterbox, mixup, random_perspective)
+                                 letterbox, mixup, random_perspective, rain, sunlight, AddGaussianNoise, AddPepperSaltNoise)
 from utils.general import (DATASETS_DIR, LOGGER, NUM_THREADS, TQDM_BAR_FORMAT, check_dataset, check_requirements,
                            check_yaml, clean_str, cv2, is_colab, is_kaggle, segments2boxes, unzip_file, xyn2xy,
                            xywh2xyxy, xywhn2xyxy, xyxy2xywhn)
@@ -701,8 +701,21 @@ class LoadImagesAndLabels(Dataset):
             nl = len(labels)  # update after albumentations
 
             # HSV color-space
-            augment_hsv(img, hgain=hyp['hsv_h'], sgain=hyp['hsv_s'], vgain=hyp['hsv_v'])
+            if random.random() < hyp["hsv"]:
+                augment_hsv(img, hgain=hyp['hsv_h'], sgain=hyp['hsv_s'], vgain=hyp['hsv_v'])
 
+            if random.random() < hyp["rain"]:
+                img = rain(img.copy())
+                
+            if random.random() < hyp["sunlight"]:
+                img = sunlight(img.copy())
+                
+            if random.random() < hyp["GaussianNoise"]:
+                img = AddGaussianNoise(img.copy())
+                
+            if random.random() < hyp["AddPepperSaltNoise"]:
+                img = AddPepperSaltNoise(img.copy())
+                
             # Flip up-down
             if random.random() < hyp['flipud']:
                 img = np.flipud(img)

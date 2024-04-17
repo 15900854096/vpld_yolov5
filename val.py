@@ -194,8 +194,9 @@ def run(
     class_map = coco80_to_coco91_class() if is_coco else list(range(1000))
     s = ('%22s' + '%11s' * 8) % ('Class', 'Images', 'Instances', 'P', 'R', 'mAP50', 'mAP90', 'mAP95', 'mAP50-95')
     if(txtlog!=None):
-        txtlog.wrintlines('\n'+s)
+        txtlog.writelines('\n'+s)
     tp, fp, p, r, f1, mp, mr, map50, ap50, map95, ap95, map = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+    map90, ap90 = 0.0, 0.0
     dt = Profile(), Profile(), Profile()  # profiling times
     loss = torch.zeros(3, device=device)
     jdict, stats, ap, ap_class = [], [], [], []
@@ -327,7 +328,7 @@ def run(
     pf = '%22s' + '%11i' * 2 + '%11.3g' * 6  # print format
     LOGGER.info(pf % ('all', seen, nt.sum(), mp, mr, map50, map90, map95, map))
     if(txtlog!=None):
-        txtlog.wrintlines('\n' + pf % ('all', seen, nt.sum(), mp, mr, map50, map90, map95, map))
+        txtlog.writelines('\n' + pf % ('all', seen, nt.sum(), mp, mr, map50, map90, map95, map))
     if nt.sum() == 0:
         LOGGER.warning(f'WARNING ⚠️ no labels found in {task} set, can not compute metrics without labels')
 
@@ -336,7 +337,7 @@ def run(
         for i, c in enumerate(ap_class):
             LOGGER.info(pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap90[i], ap95[i], ap[i]))
             if(txtlog!=None):
-                txtlog.wrintlines('\n' + pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap90[i], ap95[i], ap[i]))
+                txtlog.writelines('\n' + pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap90[i], ap95[i], ap[i]))
 
     # Print speeds
     t = tuple(x.t / seen * 1E3 for x in dt)  # speeds per image
