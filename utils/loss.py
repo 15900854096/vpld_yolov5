@@ -156,8 +156,8 @@ class ComputeLoss:
             if n:
                 #                                    0  1  2   3    4   5   6    7    8  9  10  11   12  13  14   15   16   17
                 #target-subset of predictions #pred: Ax Ay Ac1 As1 Ac2 As2 Alen Aobj  Bx By Bc1 Bs1  Bc2 Bs2 Blen Bobj cls1 cls2
-                Apxy, Apot, _, _    = pi[Ab, Aa, Agj, Agi].split((2, 6, 8, self.nc), 1)  
-                _, Bpxy, Bpot, pcls = pi[Bb, Ba, Bgj, Bgi].split((8, 2, 6, self.nc), 1) 
+                Apxy, Apot, Aobj, _, _    = pi[Ab, Aa, Agj, Agi].split((2, 5, 1, 8, self.nc), 1)  
+                _, Bpxy, Bpot, Bobj, pcls = pi[Bb, Ba, Bgj, Bgi].split((8, 2, 5, 1, self.nc), 1) 
 
                 # Regression
                 if hyp["USE_THREE_POSITIVE_SAMPLE"]:
@@ -167,8 +167,8 @@ class ComputeLoss:
                     Apxy = Apxy.sigmoid()
                     Bpxy = Bpxy.sigmoid()
                 
-                Apot = torch.cat( (Apot[:,0:4].tanh() , Apot[:,4:].sigmoid() ) , dim=1 )
-                Bpot = torch.cat( (Bpot[:,0:4].tanh() , Bpot[:,4:].sigmoid() ) , dim=1 )
+                Apot = torch.cat( (Apot[:,0:4].tanh() , Apot[:,4:5].sigmoid() ) , dim=1 )
+                Bpot = torch.cat( (Bpot[:,0:4].tanh() , Bpot[:,4:5].sigmoid() ) , dim=1 )
                 
                 Apbox = torch.cat((Apxy, Apot), 1) 
                 Bpbox = torch.cat((Bpxy, Bpot), 1) 

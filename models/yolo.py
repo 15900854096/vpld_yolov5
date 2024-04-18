@@ -97,10 +97,8 @@ class Detect(nn.Module):
                     if hyp["NOT_CAREABOUT_LOT_TYPE"]:
                         class12[:,:,:,:,0] = 1
                         class12[:,:,:,:,1] = 0
-                   
                     y = torch.cat((Axy, Ac1s1c2s2, Alen, Aobj, Bxy, Bc1s1c2s2, Blen, Bobj, class12), 4)
                 z.append(y.view(bs, self.na * nx * ny, self.no)) #nhwc
-
         return x if self.training else (torch.cat(z, 1),) if self.export else (torch.cat(z, 1), x)
 
     def _make_grid(self, nx=20, ny=20, i=0, torch_1_10=check_version(torch.__version__, '1.10.0')):
@@ -143,14 +141,17 @@ class BaseModel(nn.Module):
     def _forward_once(self, x, profile=False, visualize=False):
         y, dt = [], []  # outputs
         for m in self.model:
+            #print("!!!!!m:&m.f ",m , m.f)
             if m.f != -1:  # if not from previous layer
-                x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]  # from earlier layers
+                x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]  # from earlier layers #残差网络一样，把远距离的buffer和上一层(即-1)buffer合起来
             if profile:
                 self._profile_one_layer(m, x, dt)
             x = m(x)  # run
             y.append(x if m.i in self.save else None)  # save output
             if visualize:
                 feature_visualization(x, m.type, m.i, save_dir=visualize)
+        #print("self.save&y: ", self.save, len(y))        
+        #sys.exit()
         return x
 
     def _profile_one_layer(self, m, x, dt):
@@ -202,7 +203,7 @@ class DetectionModel(BaseModel):
             self.yaml_file = Path(cfg).name
             with open(cfg, encoding='ascii', errors='ignore') as f:
                 self.yaml = yaml.safe_load(f)  # model dict
-
+        print("DetectionModel::self.yaml: ", self.yaml)
         # Define model
         ch = self.yaml['ch'] = self.yaml.get('ch', ch)  # input channels
         if nc and nc != self.yaml['nc']:
@@ -214,7 +215,7 @@ class DetectionModel(BaseModel):
         self.model, self.save = parse_model(deepcopy(self.yaml), ch=[ch])  # model, savelist
         self.names = [str(i) for i in range(self.yaml['nc'])]  # default names
         self.inplace = self.yaml.get('inplace', True)
-
+        print("self.model: ",self.model)
         # Build strides, anchors
         m = self.model[-1]  # Detect()
         if isinstance(m, (Detect, Segment)):
@@ -234,6 +235,8 @@ class DetectionModel(BaseModel):
 
     def forward(self, x, augment=False, profile=False, visualize=False):
         if augment:
+            print("MAY be ERROR!!!!!!")
+            sys.exit()
             return self._forward_augment(x)  # augmented inference, None
         return self._forward_once(x, profile, visualize)  # single-scale inference, train
 
@@ -290,11 +293,11 @@ class DetectionModel(BaseModel):
             #mi.bias = torch.nn.Parameter(b.view(-1), requires_grad=True)
 
             b = mi.convA.bias.view(m.na, -1)  # conv.bias(255) to (3,85)
-            b.data[:, 7] += math.log(8 / (640 / s) ** 2)  # obj (8 objects per 640 image)
+            b.data[:, 7] += math.log(2 / (640 / s) ** 2)  # obj (8 objects per 640 image)
             mi.convA.bias = torch.nn.Parameter(b.view(-1), requires_grad=True)
             
             b = mi.convB.bias.view(m.na, -1)  # conv.bias(255) to (3,85)
-            b.data[:, 7] += math.log(8 / (640 / s) ** 2)  # obj (8 objects per 640 image)
+            b.data[:, 7] += math.log(2 / (640 / s) ** 2)  # obj (8 objects per 640 image)
             b.data[:, 8:8 + m.nc] += math.log(0.6 / (m.nc - 0.99999)) if cf is None else torch.log(cf / cf.sum())  # cls
             mi.convB.bias = torch.nn.Parameter(b.view(-1), requires_grad=True)
             
