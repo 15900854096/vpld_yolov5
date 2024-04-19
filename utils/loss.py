@@ -197,11 +197,11 @@ class ComputeLoss:
                 if self.nc > 1:  # cls loss (only if multiple classes)
                     t = torch.full_like(pcls, self.cn, device=self.device)  # targets
                     t[range(nb), tcls[i]] = self.cp
-                    lcls += self.BCEcls(pcls, t)  # BCE
+                    lcls += self.MSEwh(pcls.sigmoid(), t) #self.BCEcls(pcls, t)  # BCE
 
 
-            Aobji = self.BCEobj(pi[..., 7], Atobj)
-            Bobji = self.BCEobj(pi[..., 15], Btobj)
+            Aobji = self.MSEwh(pi[..., 7].sigmoid(), Atobj) #self.BCEobj(pi[..., 7], Atobj)
+            Bobji = self.MSEwh(pi[..., 15].sigmoid(), Btobj) #self.BCEobj(pi[..., 15], Btobj)
 
             
             lobj += (Aobji+Bobji) * self.balance[i]  # obj loss

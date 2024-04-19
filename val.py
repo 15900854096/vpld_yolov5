@@ -285,7 +285,7 @@ def run(
             labels[:,6:7] = (labels[:,6:7] - labels[:,4:5])/oldleng*leng + labels[:,4:5]
             
             #padding: cal map not care about label whether right
-            if hyp["NOT_CAREABOUT_LOT_TYPE"]:
+            if 0 == hyp["CAREABOUT_LOT_TYPE"]:
                 labels[:,0:1] = 0
                 predn[:,7:8] = 0
             

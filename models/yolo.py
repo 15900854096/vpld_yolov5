@@ -94,7 +94,7 @@ class Detect(nn.Module):
                     class12 = class12.sigmoid()
                     
                     #padding not care about class
-                    if hyp["NOT_CAREABOUT_LOT_TYPE"]:
+                    if 0 == hyp["CAREABOUT_LOT_TYPE"]:
                         class12[:,:,:,:,0] = 1
                         class12[:,:,:,:,1] = 0
                     y = torch.cat((Axy, Ac1s1c2s2, Alen, Aobj, Bxy, Bc1s1c2s2, Blen, Bobj, class12), 4)
