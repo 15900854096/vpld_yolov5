@@ -36,7 +36,7 @@ from utils.general import (DATASETS_DIR, LOGGER, NUM_THREADS, TQDM_BAR_FORMAT, c
 from utils.torch_utils import torch_distributed_zero_first
 
 
-from utils.augmentations import gt_flipud,gt_fliplr,gt_rotate,rotate_bound,image_gt_data_resize_all
+from utils.augmentations import gt_flipud,gt_fliplr,gt_rotate,rotate_bound,image_gt_data_resize_all,cutblock
 
 # Parameters
 HELP_URL = 'See https://docs.ultralytics.com/yolov5/tutorials/train_custom_data'
@@ -656,7 +656,7 @@ class LoadImagesAndLabels(Dataset):
 
     def __getitem__(self, index):
         index = self.indices[index]  # linear, shuffled, or image_weights
-
+        random.seed(time.time_ns()%(2**32 - 1))
         hyp = self.hyp
         mosaic = False #self.mosaic and random.random() < hyp['mosaic']  change by xuqing, must not use masic
         if mosaic:
@@ -703,7 +703,10 @@ class LoadImagesAndLabels(Dataset):
             # HSV color-space
             if random.random() < hyp["hsv"]:
                 augment_hsv(img, hgain=hyp['hsv_h'], sgain=hyp['hsv_s'], vgain=hyp['hsv_v'])
-
+            
+            if random.random() < hyp["cutblock"]:
+                cutblock(img, labels)
+               
             if random.random() < hyp["rain"]:
                 img = rain(img.copy())
                 
@@ -922,7 +925,6 @@ class LoadImagesAndLabels(Dataset):
         im, label, path, shapes = zip(*batch)  # transposed
         n = len(shapes) // 4
         im4, label4, path4, shapes4 = [], [], path[:n], shapes[:n]
-
         ho = torch.tensor([[0.0, 0, 0, 1, 0, 0]])
         wo = torch.tensor([[0.0, 0, 1, 0, 0, 0]])
         s = torch.tensor([[1, 1, 0.5, 0.5, 0.5, 0.5]])  # scale

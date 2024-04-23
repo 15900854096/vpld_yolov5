@@ -1,1 +1,1 @@
-python ./detect.py --weights ./runs/train/exp33/weights/best.pt --source /home/xuqing/longmao/yuanwushui_songgang/images --data ./xuqing/VOC_xuqing.yaml --device 2,3,4,5 --imgsz 640 --conf-thres 0.4 --iou-thres 0.1
+python ./detect.py --weights ./runs/train/exp57/weights/best.pt --source /home/xuqing/tools/yolov5_ori/runs/detect/123/ --data ./xuqing/VOC_xuqing.yaml --device 0 --imgsz 640 --conf-thres 0.001 --iou-thres 0.1

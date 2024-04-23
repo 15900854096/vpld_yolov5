@@ -36,6 +36,7 @@ mixup: 0.0  # image mixup (probability)
 copy_paste: 0.0  # segment copy-paste (probability)
 
 hsv: 1.0
+cutblock: 0.1
 rain: 0
 sunlight: 0
 GaussianNoise: 0

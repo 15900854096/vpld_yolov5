@@ -9,6 +9,7 @@ import sys
 import time
 import yaml
 import os
+import random
 from pathlib import Path
 from utils.metrics import bbox_iou
 from utils.torch_utils import de_parallel
@@ -112,6 +113,7 @@ class ComputeLoss:
         BCEcls = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['cls_pw']], device=device))
         BCEobj = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['obj_pw']], device=device))
         MSEwh = nn.MSELoss()
+        MSEobj = nn.MSELoss(reduction='none')
 
         # Class label smoothing https://arxiv.org/pdf/1902.04103.pdf eqn 3
         self.cp, self.cn = smooth_BCE(eps=h.get('label_smoothing', 0.0))  # positive, negative BCE targets
@@ -126,6 +128,7 @@ class ComputeLoss:
         self.balance = {3: [1.0, 1.0, 1.0]}.get(m.nl, [1.0, 1.0, 1.0, 1.0, 1.0])  # P3-P7
         self.ssi = list(m.stride).index(16) if autobalance else 0  # stride 16 index
         self.MSEwh, self.BCEcls, self.BCEobj, self.gr, self.hyp, self.autobalance = MSEwh, BCEcls, BCEobj, 1.0, h, autobalance
+        self.MSEobj = MSEobj
         self.na = m.na  # number of anchors
         self.nc = m.nc  # number of classes
         self.nl = m.nl  # number of layers
@@ -138,7 +141,7 @@ class ComputeLoss:
         lobj = torch.zeros(1, device=self.device)  # object loss
         #tcls, tbox, indices, anchors = self.build_targets(p, targets)  # targets
         tcls, Atbox, Aindices, Btbox, Bindices, anchors = self.build_targets(p, targets)
-
+        random.seed(time.time_ns()%(2**32 - 1))
         # Losses
         for i, pi in enumerate(p):  # layer index, layer predictions
             Ab, Aa, Agj, Agi = Aindices[i]  # image, anchor, gridy, gridx
@@ -199,10 +202,30 @@ class ComputeLoss:
                     t[range(nb), tcls[i]] = self.cp
                     lcls += self.MSEwh(pcls.sigmoid(), t) #self.BCEcls(pcls, t)  # BCE
 
-
-            Aobji = self.MSEwh(pi[..., 7].sigmoid(), Atobj) #self.BCEobj(pi[..., 7], Atobj)
-            Bobji = self.MSEwh(pi[..., 15].sigmoid(), Btobj) #self.BCEobj(pi[..., 15], Btobj)
-
+            if na:
+                Aselect = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)
+                Aselect[Ab, Aa, Agj, Agi] = 1
+                for idx, v in enumerate(Ab):
+                    list1 = [random.randint(0,pi.shape[2]-1) for j in range(3)]
+                    list2 = [random.randint(0,pi.shape[3]-1) for j in range(3)]
+                    Aselect[v,Aa[idx],list1,list2] = 1  
+            else:
+                Aselect = torch.ones(pi.shape[:4], dtype=pi.dtype, device=self.device)
+            
+            if nb:
+                Bselect = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)
+                Bselect[Bb, Ba, Bgj, Bgi] = 1
+                for idx, v in enumerate(Bb):
+                    list1 = [random.randint(0,pi.shape[2]-1) for j in range(3)]
+                    list2 = [random.randint(0,pi.shape[3]-1) for j in range(3)]
+                    Bselect[v,Ba[idx],list1,list2] = 1  
+            else:
+                Bselect = torch.ones(pi.shape[:4], dtype=pi.dtype, device=self.device)
+            
+            #Aobji = self.MSEwh(pi[..., 7].sigmoid(), Atobj) #self.BCEobj(pi[..., 7], Atobj)
+            #Bobji = self.MSEwh(pi[..., 15].sigmoid(), Btobj) #self.BCEobj(pi[..., 15], Btobj)
+            Aobji = torch.sum(self.MSEobj(pi[..., 7].sigmoid(), Atobj) * Aselect) / torch.sum(Aselect)
+            Bobji = torch.sum(self.MSEobj(pi[..., 15].sigmoid(), Btobj) * Bselect) / torch.sum(Bselect)
             
             lobj += (Aobji+Bobji) * self.balance[i]  # obj loss
             if self.autobalance:

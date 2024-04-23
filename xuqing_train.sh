@@ -1,2 +1,2 @@
-python train.py  --weights xuqing/yolov5s.pt  --cfg ./xuqing/yolov5s_xuqing.yaml  --data ./xuqing/VOC_xuqing.yaml  --device 2,3,4,5 --imgsz 640 --rect --epoch 900 --batch-size 240 --label-smoothing 0.2 --noautoanchor
+python train.py  --weights xuqing/yolov5s.pt  --cfg ./xuqing/yolov5s_xuqing.yaml  --data ./xuqing/VOC_xuqing.yaml  --device 0,1,2,3 --imgsz 640 --rect --epoch 900 --batch-size 240 --label-smoothing 0.2 --noautoanchor
 #python train.py   --weights /home/xuqing/tools/yolov5_ori/runs/train/exp10/weights/last_250.pt --cfg ./xuqing/yolov5s_xuqing.yaml  --data ./xuqing/VOC_xuqing.yaml  --device 3,4,5,6 --imgsz 640 --rect --epoch 297 --batch-size 1  --noautoanchor --resume 

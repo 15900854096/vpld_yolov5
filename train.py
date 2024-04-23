@@ -298,6 +298,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         if RANK in {-1, 0}:
             pbar = tqdm(pbar, total=nb, bar_format=TQDM_BAR_FORMAT)  # progress bar
         optimizer.zero_grad()
+        mem=0
         for i, (imgs, targets, paths, _) in pbar:  # batch -------------------------------------------------------------
             #batch_draw_save(imgs,targets)
             #continue 

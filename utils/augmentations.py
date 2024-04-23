@@ -5,6 +5,7 @@ Image augmentation functions
 
 import math
 import random
+import time
 
 import cv2
 import numpy as np
@@ -65,6 +66,7 @@ def denormalize(x, mean=IMAGENET_MEAN, std=IMAGENET_STD):
 
 
 def augment_hsv(im, hgain=0.5, sgain=0.5, vgain=0.5):
+    np.random.seed(time.time_ns()%(2**32 - 1))
     # HSV color-space augmentation
     if hgain or sgain or vgain:
         r = np.random.uniform(-1, 1, 3) * [hgain, sgain, vgain] + 1  # random gains
@@ -481,6 +483,7 @@ def is_gt_out_img(lot, min_value, max_value):
     return True
 
 def image_gt_data_resize_all(img, gt):
+    np.random.seed(time.time_ns()%(2**32 - 1))
     H,W,C = img.shape
     imgsize = H
     rate = np.random.uniform(0.9, 1.1, 1)
@@ -523,6 +526,7 @@ def image_gt_data_resize_all(img, gt):
     
     
 def sunlight(img):
+    random.seed(time.time_ns()%(2**32 - 1))
     #获取图像行和列
     rows, cols = img.shape[:2]
     #设置中心点
@@ -558,6 +562,7 @@ def sunlight(img):
     return img 
 
 def rain(img):
+    random.seed(time.time_ns()%(2**32 - 1))
     value = random.randint(10,500)
     length = random.randint(10,50) # 对角矩阵大小，表示雨滴的长度
     angle = random.randint(-30,30) # 倾斜的角度，逆时针为正
@@ -598,6 +603,7 @@ def rain(img):
 
 
 def AddGaussianNoise(img):
+    random.seed(time.time_ns()%(2**32 - 1))
     mean = random.randint(0,20)
     var = random.randint(5,15)
     #print(mean,var)
@@ -609,6 +615,7 @@ def AddGaussianNoise(img):
     return img.astype(np.uint8)
 
 def AddPepperSaltNoise(img):
+    np.random.seed(time.time_ns()%(2**32 - 1))
     percent = np.random.uniform(0.0, 0.05)
     #print(percent)
     img = img.astype(np.float32)
@@ -621,3 +628,51 @@ def AddPepperSaltNoise(img):
         else:
             img[randX,randY,randZ]=255          
     return img.astype(np.uint8)
+
+def value_range(x,minvalue,maxvalue):
+    if x<minvalue:
+        return minvalue
+    if x>maxvalue:
+        return maxvalue
+    return x
+
+def cutblock(img,labels):
+    random.seed(time.time_ns()%(2**32 - 1))
+    bigrange = 10
+    for label in labels:
+        probility = random.random()
+        if probility < 0.5:
+            continue
+        center_x = int(label[1]*img.shape[1]) # H W C
+        center_y = int(label[2]*img.shape[0])
+        lefttop_x = value_range(center_x - bigrange, 0, img.shape[1]-1)
+        lefttop_y = value_range(center_y - bigrange, 0, img.shape[0]-1)
+        rightbottom_x = value_range(center_x + bigrange, 0, img.shape[1]-1)
+        rightbottom_y = value_range(center_y + bigrange, 0, img.shape[0]-1)
+        
+        length = random.randint(10,20)
+        x = random.randint(lefttop_x, rightbottom_x)
+        y = random.randint(lefttop_y, rightbottom_y)
+        lfx = value_range(x-length, 0, img.shape[1]-1)
+        lfy = value_range(y-length, 0, img.shape[0]-1)
+        rbx = value_range(x+length, 0, img.shape[1]-1)
+        rby = value_range(y+length, 0, img.shape[0]-1)
+        img[lfy:rby,lfx:rbx,:] = 0
+        if probility < 0.25:
+            x = random.randint(0, lefttop_x)
+            y = random.randint(0, lefttop_y)
+            lfx = value_range(x-length, 0, img.shape[1]-1)
+            lfy = value_range(y-length, 0, img.shape[0]-1)
+            rbx = value_range(x+length, 0, img.shape[1]-1)
+            rby = value_range(y+length, 0, img.shape[0]-1)
+            img[lfy:rby,lfx:rbx,:] = 0
+        else:
+            x = random.randint(rightbottom_x, img.shape[1]-1)
+            y = random.randint(rightbottom_y, img.shape[0]-1)
+            lfx = value_range(x-length, 0, img.shape[1]-1)
+            lfy = value_range(y-length, 0, img.shape[0]-1)
+            rbx = value_range(x+length, 0, img.shape[1]-1)
+            rby = value_range(y+length, 0, img.shape[0]-1)
+            img[lfy:rby,lfx:rbx,:] = 0
+        
+    return    

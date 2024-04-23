@@ -59,17 +59,63 @@ class Conv(nn.Module):
     def forward_fuse(self, x):
         return self.act(self.conv(x))
 
+
+class MergeDiffSizeBufferConv(nn.Module):
+    def __init__(self, listch):
+        super().__init__()
+        c1,c2,c3 = listch
+        self.conv8to16 = nn.Conv2d(c1, c2, 3, 2, 1, groups=1, dilation=1, bias=True)
+        self.bn8to16 = nn.BatchNorm2d(c2)
+        self.act8to16 = nn.ReLU()
+        
+        self.conv16to32 = nn.Conv2d(c2, c3, 3, 2, 1, groups=1, dilation=1, bias=True)
+        self.bn16to32 = nn.BatchNorm2d(c3)
+        self.act16to32 = nn.ReLU()
+        
+        self.backbone8to16 = nn.Sequential(*(self.conv8to16,self.bn8to16,self.act8to16))
+        self.backbone16to32 = nn.Sequential(*(self.conv16to32,self.bn16to32,self.act16to32))
+        
+    def forward(self, x):
+        feat8, feat16, feat32 = x
+        temp1 = self.backbone8to16(feat8)
+        temp2 = torch.add(temp1,feat16)
+        res = torch.add(self.backbone16to32(temp2),feat32)
+        return res
+       
+       
+
 class DecoupConv(nn.Module):
     def __init__(self, c1, c2, clsnum, archornum, k=3, s=1):
         super().__init__()
-        self.conv1 = Conv(c1, 2*c1, k, s)
-        self.conv1_next = Conv(2*c1, c1, k, s)
-        self.conv2 = Conv(c1, 2*c1, k, s)
-        self.conv2_next = Conv(2*c1, c1, k, s)
-        self.convA = nn.Conv2d(c1, (int)((c2-clsnum)/2) * archornum, 1, 1, autopad(1), groups=1, dilation=1, bias=True)
-        self.convB = nn.Conv2d(c1, (int)((c2-clsnum)/2+clsnum) * archornum, 1, 1, autopad(1), groups=1,  dilation=1, bias=True)
+        assert((c2-clsnum)%2==0)
+        self.regAchanel = (int)((c2-clsnum)/2-1)
+        self.clsAchanel = 1
+        self.regBchanel = (int)((c2-clsnum)/2-1)
+        self.clsBchanel = 1 + clsnum
+        print(self.regAchanel,self.clsAchanel, self.regBchanel, self.clsBchanel)
+        self.conv_neckA = nn.Sequential(Conv(c1, 2*c1, k, s), Conv(2*c1, c1, k, s))
+        self.conv_neckB = nn.Sequential(Conv(c1, 2*c1, k, s), Conv(2*c1, c1, k, s))
+        self.conv_regA = nn.Sequential(Conv(c1, c1, k, s), nn.Conv2d(c1, self.regAchanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
+        self.conv_clsA = nn.Sequential(Conv(c1, c1, k, s), nn.Conv2d(c1, self.clsAchanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
+        self.conv_regB = nn.Sequential(Conv(c1, c1, k, s), nn.Conv2d(c1, self.regBchanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
+        self.conv_clsB = nn.Sequential(Conv(c1, c1, k, s), nn.Conv2d(c1, self.clsBchanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
+        
+        #self.conv1 = Conv(c1, 2*c1, k, s)
+        #self.conv1_next = Conv(2*c1, c1, k, s)
+        #self.conv2 = Conv(c1, 2*c1, k, s)
+        #self.conv2_next = Conv(2*c1, c1, k, s)
+        #self.convA = nn.Conv2d(c1, (int)((c2-clsnum)/2) * archornum, 1, 1, autopad(1), groups=1, dilation=1, bias=True)
+        #self.convB = nn.Conv2d(c1, (int)((c2-clsnum)/2+clsnum) * archornum, 1, 1, autopad(1), groups=1,  dilation=1, bias=True)
     def forward(self, x):
-        return torch.cat(  (self.convA(self.conv1_next(self.conv1(x))), self.convB(self.conv2_next(self.conv2(x))))  ,1)
+        Aneck = self.conv_neckA(x)
+        Bneck = self.conv_neckB(x)
+        regA  = self.conv_regA(Aneck)
+        clsA  = self.conv_clsA(Aneck)
+        regB  = self.conv_regB(Bneck)
+        clsB  = self.conv_clsB(Bneck)
+        res = torch.cat( (regA,clsA,regB,clsB) ,1)
+        return res
+        #return torch.cat(  (self.convA(self.conv1_next(self.conv1(x))), self.convB(self.conv2_next(self.conv2(x))))  ,1)
 
     
 class DWConv(Conv):

@@ -182,7 +182,7 @@ def run(
                             color = (0,0,255)    
                         cv2.arrowedLine(im0, p1, p2, color, 2, 4)
                         cv2.arrowedLine(im0, p2, p3, color, 2, 4)                        
-                        
+                        cv2.putText(im0,"%0.2f"%float(conf),(int(0.5*(p1[0]+p2[0])),int(0.5*(p1[1]+p2[1]))),cv2.FONT_HERSHEY_COMPLEX,1,(255,255,255),1)
                         #c = int(cls)  # integer class
                         #label = None if hide_labels else (names[c] if hide_conf else f'{names[c]} {conf:.2f}')
                         #annotator.box_label(xyxy, label, color=colors(c, True))
