@@ -193,8 +193,8 @@ class ComputeLoss:
                 #    b, a, gj, gi, iou = b[j], a[j], gj[j], gi[j], iou[j]
                 #if self.gr < 1:
                 #    iou = (1.0 - self.gr) + self.gr * iou   
-                Atobj[Ab, Aa, Agj, Agi] = self.cp  # iou ratio
-                Btobj[Bb, Ba, Bgj, Bgi] = self.cp  # iou ratio
+                Atobj[Ab, Aa, Agj, Agi] = 1  # iou ratio
+                Btobj[Bb, Ba, Bgj, Bgi] = 1  # iou ratio
 
                 # Classification
                 if self.nc > 1:  # cls loss (only if multiple classes)
@@ -206,8 +206,8 @@ class ComputeLoss:
                 Aselect = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)
                 Aselect[Ab, Aa, Agj, Agi] = 1
                 for idx, v in enumerate(Ab):
-                    list1 = [random.randint(0,pi.shape[2]-1) for j in range(3)]
-                    list2 = [random.randint(0,pi.shape[3]-1) for j in range(3)]
+                    list1 = [random.randint(0,pi.shape[2]-1) for j in range(int(hyp["NEG_POS_RATE"]))]
+                    list2 = [random.randint(0,pi.shape[3]-1) for j in range(int(hyp["NEG_POS_RATE"]))]
                     Aselect[v,Aa[idx],list1,list2] = 1  
             else:
                 Aselect = torch.ones(pi.shape[:4], dtype=pi.dtype, device=self.device)
@@ -216,8 +216,8 @@ class ComputeLoss:
                 Bselect = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)
                 Bselect[Bb, Ba, Bgj, Bgi] = 1
                 for idx, v in enumerate(Bb):
-                    list1 = [random.randint(0,pi.shape[2]-1) for j in range(3)]
-                    list2 = [random.randint(0,pi.shape[3]-1) for j in range(3)]
+                    list1 = [random.randint(0,pi.shape[2]-1) for j in range(int(hyp["NEG_POS_RATE"]))]
+                    list2 = [random.randint(0,pi.shape[3]-1) for j in range(int(hyp["NEG_POS_RATE"]))]
                     Bselect[v,Ba[idx],list1,list2] = 1  
             else:
                 Bselect = torch.ones(pi.shape[:4], dtype=pi.dtype, device=self.device)

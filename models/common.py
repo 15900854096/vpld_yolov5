@@ -1,4 +1,4 @@
-# YOLOv5 🚀 by Ultralytics, AGPL-3.0 license
+# YOLOv5 馃殌 by Ultralytics, AGPL-3.0 license
 """
 Common modules
 """
@@ -92,20 +92,22 @@ class DecoupConv(nn.Module):
         self.clsAchanel = 1
         self.regBchanel = (int)((c2-clsnum)/2-1)
         self.clsBchanel = 1 + clsnum
-        print(self.regAchanel,self.clsAchanel, self.regBchanel, self.clsBchanel)
-        self.conv_neckA = nn.Sequential(Conv(c1, 2*c1, k, s), Conv(2*c1, c1, k, s))
-        self.conv_neckB = nn.Sequential(Conv(c1, 2*c1, k, s), Conv(2*c1, c1, k, s))
-        self.conv_regA = nn.Sequential(Conv(c1, c1, k, s), nn.Conv2d(c1, self.regAchanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
-        self.conv_clsA = nn.Sequential(Conv(c1, c1, k, s), nn.Conv2d(c1, self.clsAchanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
-        self.conv_regB = nn.Sequential(Conv(c1, c1, k, s), nn.Conv2d(c1, self.regBchanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
-        self.conv_clsB = nn.Sequential(Conv(c1, c1, k, s), nn.Conv2d(c1, self.clsBchanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
         
-        #self.conv1 = Conv(c1, 2*c1, k, s)
-        #self.conv1_next = Conv(2*c1, c1, k, s)
-        #self.conv2 = Conv(c1, 2*c1, k, s)
-        #self.conv2_next = Conv(2*c1, c1, k, s)
-        #self.convA = nn.Conv2d(c1, (int)((c2-clsnum)/2) * archornum, 1, 1, autopad(1), groups=1, dilation=1, bias=True)
-        #self.convB = nn.Conv2d(c1, (int)((c2-clsnum)/2+clsnum) * archornum, 1, 1, autopad(1), groups=1,  dilation=1, bias=True)
+        halfchanel = int(c1/2)
+        quarterchanel = int(c1/4)
+        self.conv_neckA = nn.Sequential(Conv(c1, halfchanel, k, s), Conv(halfchanel, quarterchanel, k, s))
+        self.conv_neckB = nn.Sequential(Conv(c1, halfchanel, k, s), Conv(halfchanel, quarterchanel, k, s))
+        self.conv_regA = nn.Sequential(Conv(quarterchanel, quarterchanel, k, s), nn.Conv2d(quarterchanel, self.regAchanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
+        self.conv_clsA = nn.Sequential(Conv(quarterchanel, quarterchanel, k, s), nn.Conv2d(quarterchanel, self.clsAchanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
+        self.conv_regB = nn.Sequential(Conv(quarterchanel, quarterchanel, k, s), nn.Conv2d(quarterchanel, self.regBchanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
+        self.conv_clsB = nn.Sequential(Conv(quarterchanel, quarterchanel, k, s), nn.Conv2d(quarterchanel, self.clsBchanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
+        
+        # self.conv1 = Conv(c1, 2*c1, k, s)
+        # self.conv1_next = Conv(2*c1, c1, k, s)
+        # self.conv2 = Conv(c1, 2*c1, k, s)
+        # self.conv2_next = Conv(2*c1, c1, k, s)
+        # self.convA = nn.Conv2d(c1, (int)((c2-clsnum)/2) * archornum, 1, 1, autopad(1), groups=1, dilation=1, bias=True)
+        # self.convB = nn.Conv2d(c1, (int)((c2-clsnum)/2+clsnum) * archornum, 1, 1, autopad(1), groups=1,  dilation=1, bias=True)
     def forward(self, x):
         Aneck = self.conv_neckA(x)
         Bneck = self.conv_neckB(x)
