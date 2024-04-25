@@ -226,7 +226,7 @@ def run(
 
         # NMS
         #targets: img_id cls x1 y1 x2 y2 x3 y3 x3 x4
-        #targets[:, 2:] *= torch.tensor((shapes[si][0][0], shapes[si][0][0], shapes[si][0][0], shapes[si][0][0], shapes[si][0][0], shapes[si][0][0]), device=device)  # to pixels #base_600
+        #targets[:, 2:] *= torch.tensor((shapes[si][0][0], shapes[si][0][0], shapes[si][0][0], shapes[si][0][0], shapes[si][0][0], shapes[si][0][0]), device=device)  # to pixels #base_ori
         lb = [targets[targets[:, 0] == i, 1:] for i in range(nb)] if save_hybrid else []  # for autolabelling
         with dt[2]:
             #             0  1  2   3    4   5   6    7    8  9  10  11  12  13  14   15   16   17
@@ -245,8 +245,8 @@ def run(
         for si, pred in enumerate(preds):
             ori_shape = shapes[si][0]
             ipt_shape = shapes[si][1]
-            labels = targets[targets[:, 0] == si, 1:][:,:7] #lebels: label x1 y1 x2 y2 x3 y3 BatchNorm_1
-            labels[:, 1:] *= torch.tensor((ori_shape[0], ori_shape[0], ori_shape[0], ori_shape[0], ori_shape[0], ori_shape[0]), device=device)#lebels: label x1 y1 x2 y2 x3 y3  base_600
+            labels = targets[targets[:, 0] == si, 1:][:,:7] #lebels: label x1 y1 x2 y2 x3 y3   all is BatchNorm_1
+            labels[:, 1:] *= torch.tensor((ori_shape[0], ori_shape[0], ori_shape[0], ori_shape[0], ori_shape[0], ori_shape[0]), device=device)#lebels: label x1 y1 x2 y2 x3 y3   all is base_ori
             nl, npr = labels.shape[0], pred.shape[0]  # number of labels, predictions
             path = Path(paths[si])
             correct = torch.zeros(npr, niou, dtype=torch.bool, device=device)  # init
@@ -262,17 +262,18 @@ def run(
             # Predictions
             if single_cls:
                 pred[:, 8] = 0
-            predn = pred.clone()
-            scale_boxes(im[si].shape[1:], predn[:, :2], ori_shape, ipt_shape)  # native-space pred  only process x1 y1 ## base_640 to base_600
+            predn = pred.clone() 
+            # x y len c1 s1 c2 s2 conf cls base_ipt(x1 y1) BatchNorm1(other)
+            scale_boxes(im[si].shape[1:], predn[:, :2], ori_shape, ipt_shape)  # native-space pred  only process x1 y1 ## base_640 to base_ori
+            # x y len c1 s1 c2 s2 conf cls base_ori(x1 y1) BatchNorm1(other)
             
             #translation
-            lengPre = torch.full((pred.shape[0] ,1), default_vlot_depth, device=device)
-            idx = torch.tensor(range(pred.shape[0]), device=device)[predn[0,2]*ori_shape[0] > default_hlot_min_width]
-            if(idx.shape[0]):
-                lengPre[idx,0:1]=default_hlot_depth
+            lengPre = torch.full((predn.shape[0] ,1), default_vlot_depth, device=device)
+            hlotPre_idx = torch.tensor(range(predn.shape[0]), device=device)[predn[0,2]*ori_shape[0] > default_hlot_min_width]
+            lengPre[hlotPre_idx,0:1]=default_hlot_depth
 
             # 0 1  2   3  4  5  6  7    8
-            # x y len c1 s1 c2 s2 conf cls base_600(x1 y1) BatchNorm1(other)
+            # x y len c1 s1 c2 s2 conf cls base_ori(x1 y1) BatchNorm1(other)
             tmp=torch.zeros(predn.shape[0],8,device=device)
             tmp[:,:2] = predn[:,:2]
             tmp[:,2:3] = tmp[:,0:1] + predn[:,2:3]*ori_shape[0]*predn[:,3:4]
@@ -283,7 +284,7 @@ def run(
             tmp[:,7:8] = predn[:,8:9]
             predn = tmp
             # 0   1  2  3  4  5  6    7    
-            # x1 y1 x2 y2 x3 y3 conf cls  base_600
+            # x1 y1 x2 y2 x3 y3 conf cls   all base_ori
             
             
             #padding: cal map not care about label whether right
@@ -294,24 +295,25 @@ def run(
             # Evaluate
             if nl:
                 #tbox = xywh2xyxy(labels[:, 1:5])  # target boxes
-                #scale_boxes(im[si].shape[1:], tbox, shape, shapes[si][1])  # native-space labels  #base_640 to base_600
+                #scale_boxes(im[si].shape[1:], tbox, shape, shapes[si][1])  # native-space labels  #base_640 to base_ori
                 #labelsn = torch.cat((labels[:, 0:1], tbox), 1)  # native-space labels #lebels: label x1 y1 x2 y2 x3 y3
                 
                 #          0    1  2  3  4  5  6
-                #lebels: label x1 y1 x2 y2 x3 y3 base_600
+                #lebels: label x1 y1 x2 y2 x3 y3  base_ori&depth_bad
                 #labels中库位深度(pt2->pt3)是假值且不统一，需要设计成固定值，方便和pred联合计算iou
                 lengGt = torch.full((labels.shape[0] ,1), default_vlot_depth, device=device)
                 widthGt = torch.sqrt((labels[:,3] - labels[:,1])**2+(labels[:,4] - labels[:,2])**2)
-                idx = torch.tensor(range(labels.shape[0]), device=device)[widthGt > default_hlot_min_width]
-                lengGt[idx,0:1] = default_hlot_depth
+                hlotGT_idx = torch.tensor(range(labels.shape[0]), device=device)[widthGt > default_hlot_min_width]
+                lengGt[hlotGT_idx,0:1] = default_hlot_depth
                 theta = torch.atan2(labels[:,6:7] - labels[:,4:5],labels[:,5:6] - labels[:,3:4])
                 labels[:,5:6] = torch.cos(theta)*lengGt + labels[:,3:4]
                 labels[:,6:7] = torch.sin(theta)*lengGt + labels[:,4:5]
                 labelsn = labels
+                #lebels: label x1 y1 x2 y2 x3 y3  base_ori&depth_ok
                 
             
-                #predn:   x1 y1 x2 y2 x3 y3 conf cls  base_600
-                #lebels: label x1 y1 x2 y2 x3 y3  base_600
+                #predn:   x1 y1 x2 y2 x3 y3 conf cls  base_ori
+                #labelsn: label x1 y1 x2 y2 x3 y3  base_ori&depth_ok
                 correct = process_batch(predn, labelsn, iouv)
                 if plots:
                     confusion_matrix.process_batch(predn, labelsn)

@@ -965,14 +965,13 @@ def non_max_suppression(
                 cosvalue = min(1,cosvalue)
                 Adire_Bdire_angle = math.acos( cosvalue )
                 
-                if(disPts(point0 ,point1_dest)<meanlen*0.3 and disPts(point0_dest ,point1)<meanlen*0.3 and Adire_Bdire_angle<PI/18):
+                if(disPts(point0 ,point1_dest)<Blen*0.3 and disPts(point0_dest ,point1)<Alen*0.3 and Adire_Bdire_angle<PI/18):
                     abdis = disPts(point0 ,point1)/imgsz
                     abangle = math.atan2(point1[1]-point0[1], point1[0]-point0[0])
 
                     bcangle = math.atan2(Bp[11], Bp[10])
                     adangle = math.atan2(Ap[3],  Ap[2])
                     tm = math.atan2((Bp[11]+Ap[3])/2, (Bp[10]+Ap[2])/2)
-                    #print(cls)
                     npy = list([point0[0], point0[1], abdis, math.cos(abangle), math.sin(abangle), math.cos(tm), math.sin(tm), mean_conf]) + cls
                     npy = np.array(npy)
                     npy=torch.tensor(npy).to(prediction.device)
