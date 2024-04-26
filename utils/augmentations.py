@@ -533,33 +533,22 @@ def sunlight(img):
     centerX = random.randint(0,rows)
     centerY =  random.randint(0,cols)
     #print(centerX,centerY) 
-    radius = 150 
-    #设置光照强度
-    strength = 150
+    radius = random.randint(30,60)
+    strength = random.randint(50,150)
     
-    #图像光照特效
-    for i in range(rows):
-        for j in range(cols):
-            #计算当前点到光照中心距离(平面坐标系中两点之间的距离)
-            distance = math.pow((centerY-j), 2) + math.pow((centerX-i), 2)
-            #获取原始图像
-            B =  img[i,j][0]
-            G =  img[i,j][1]
-            R = img[i,j][2]
-            if (distance < radius*radius):
-                #按照距离大小计算增强的光照值
-                result = (int)(strength*( 1.0 - math.sqrt(distance) / radius ))
-                B = img[i,j][0] + result
-                G = img[i,j][1] + result
-                R = img[i,j][2] + result
-                #判断边界 防止越界
-                B = min(255, max(0, B))
-                G = min(255, max(0, G))
-                R = min(255, max(0, R))
-                img[i,j] = np.uint8((B, G, R))
-            else:
-                img[i,j] = np.uint8((B, G, R))
-    return img 
+    img = img.astype(np.float32)
+    
+    imgpad = np.zeros((img.shape[0], img.shape[1]), np.uint8)
+    imgpad = cv2.circle(imgpad, (centerX, centerY), radius, (strength, strength, strength), -1)
+
+    imgpad = cv2.GaussianBlur(imgpad,(21,21),20,20)
+    img = img+np.repeat(imgpad,3,axis=1).reshape(img.shape)
+
+    img[img>255]=255
+    img[img<0]=0
+   
+    return img.astype(np.uint8)
+
 
 def rain(img):
     random.seed(time.time_ns()%(2**32 - 1))
@@ -616,18 +605,21 @@ def AddGaussianNoise(img):
 
 def AddPepperSaltNoise(img):
     np.random.seed(time.time_ns()%(2**32 - 1))
-    percent = np.random.uniform(0.0, 0.05)
-    #print(percent)
+    percent = np.random.uniform(0.0001, 0.05)
     img = img.astype(np.float32)
-    for i in range(int(percent*img.shape[0]*img.shape[1])):
-        randX=random.randint(0,img.shape[0]-1)
-        randY=random.randint(0,img.shape[1]-1)
-        randZ=random.randint(0,img.shape[2]-1)
-        if random.uniform(0,1)<=0.5:
-            img[randX,randY,randZ]=0
-        else:
-            img[randX,randY,randZ]=255          
+
+    all_num = int(percent*img.shape[0]*img.shape[1])
+    black_num = int(all_num*np.random.uniform(0.1, 0.9))
+
+    xselect = np.random.randint(0,img.shape[0]-1,all_num)
+    yselect = np.random.randint(0,img.shape[1]-1,all_num)
+    cselect = np.random.randint(0,img.shape[2]-1,all_num)
+    img[xselect,yselect,cselect]=0
+
+    temp = np.random.randint(0,all_num-1,black_num)
+    img[xselect[temp],yselect[temp],cselect[temp]]=255        
     return img.astype(np.uint8)
+
 
 def value_range(x,minvalue,maxvalue):
     if x<minvalue:
