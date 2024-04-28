@@ -45,3 +45,5 @@ AddPepperSaltNoise: 0.15
 CAREABOUT_LOT_TYPE: 1 #是否需要不关注库位类型，来测试库位的mAP
 USE_THREE_POSITIVE_SAMPLE: 0 #是否需要把一个正样本扩充为三个样本来预测，此策略来自于yolov5
 NEG_POS_RATE: 5
+
+EXPORT_ONNX: 0

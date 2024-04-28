@@ -64,6 +64,8 @@ class Detect(nn.Module):
     def forward(self, x):
         z = []  # inference output
         output=[0]
+        if hyp["EXPORT_ONNX"]:
+            return self.m(self.m_pre(x))
         for i in range(self.nl):
             output[i] = self.m_pre(x)
             output[i] = self.m(output[i])  # conv
