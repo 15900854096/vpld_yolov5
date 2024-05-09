@@ -3,6 +3,9 @@
 # python train.py --batch 64 --cfg yolov5n6.yaml --weights '' --data coco.yaml --img 640 --epochs 300 --linear
 # See tutorials for hyperparameter evolution https://github.com/ultralytics/yolov5#tutorials
 
+#searching  box:1  cls:0.5  obj:2  cutblock:0.1
+#parking    box:2  cls:0    obj:1  cutblock:0.2
+
 lr0: 0.01  # initial learning rate (SGD=1E-2, Adam=1E-3)
 lrf: 0.01  # final OneCycleLR learning rate (lr0 * lrf)
 momentum: 0.937  # SGD momentum/Adam beta1
@@ -10,10 +13,10 @@ weight_decay: 0.0005  # optimizer weight decay 5e-4
 warmup_epochs: 3.0  # warmup epochs (fractions ok)
 warmup_momentum: 0.8  # warmup initial momentum
 warmup_bias_lr: 0.1  # warmup initial bias lr
-box: 1  # box loss gain
-cls: 0.5  # cls loss gain
+box: 2  # box loss gain
+cls: 0 #0.5  # cls loss gain
 cls_pw: 1.0  # cls BCELoss positive_weight
-obj: 2  # obj loss gain (scale with pixels)
+obj: 1  # obj loss gain (scale with pixels)
 obj_pw: 1.0  # obj BCELoss positive_weight
 iou_t: 0.20  # IoU training threshold
 anchor_t: 2.0  # anchor-multiple threshold
@@ -36,14 +39,14 @@ mixup: 0.0  # image mixup (probability)
 copy_paste: 0.0  # segment copy-paste (probability)
 
 hsv: 0.5
-cutblock: 0.1
+cutblock: 0.2 #0.1
 rain: 0.15
 sunlight: 0.15
 GaussianNoise: 0.15
 AddPepperSaltNoise: 0.15
 
-CAREABOUT_LOT_TYPE: 1 #是否需要不关注库位类型，来测试库位的mAP
+CAREABOUT_LOT_TYPE: 0 #是否需要不关注库位类型，来测试库位的mAP
 USE_THREE_POSITIVE_SAMPLE: 0 #是否需要把一个正样本扩充为三个样本来预测，此策略来自于yolov5
 NEG_POS_RATE: 5
 
-EXPORT_ONNX: 0
+EXPORT_ONNX: 0  #只有部署在J3上时，为了防止J3模型的数据在BPU和CPU上来回切换，所以需要截断最后几个基本层，后续的数据在CPU上做后处理，来替换这些基本层
