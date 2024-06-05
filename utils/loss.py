@@ -113,6 +113,7 @@ class ComputeLoss:
         BCEcls = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['cls_pw']], device=device))
         BCEobj = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['obj_pw']], device=device))
         MSEwh = nn.MSELoss()
+        MSEthetaAD = nn.MSELoss(reduction='none')
         MSEobj = nn.MSELoss(reduction='none')
 
         # Class label smoothing https://arxiv.org/pdf/1902.04103.pdf eqn 3
@@ -129,6 +130,7 @@ class ComputeLoss:
         self.ssi = list(m.stride).index(16) if autobalance else 0  # stride 16 index
         self.MSEwh, self.BCEcls, self.BCEobj, self.gr, self.hyp, self.autobalance = MSEwh, BCEcls, BCEobj, 1.0, h, autobalance
         self.MSEobj = MSEobj
+        self.MSEthetaAD = MSEthetaAD
         self.na = m.na  # number of anchors
         self.nc = m.nc  # number of classes
         self.nl = m.nl  # number of layers
@@ -173,15 +175,31 @@ class ComputeLoss:
                 Apot = torch.cat( (Apot[:,0:4].tanh() , Apot[:,4:5].sigmoid() ) , dim=1 )
                 Bpot = torch.cat( (Bpot[:,0:4].tanh() , Bpot[:,4:5].sigmoid() ) , dim=1 )
                 
-                Apbox = torch.cat((Apxy, Apot), 1) 
+                Apbox = torch.cat((Apxy, Apot), 1)
                 Bpbox = torch.cat((Bpxy, Bpot), 1) 
+                
+                # hlot not care about direction theta, vlot&islot care about direction theta  0.375=4.8/12.8
+                AweightstheAD = torch.zeros((na,1), dtype=pi.dtype, device=self.device)+1.5
+                AweightstheAD[Atbox[i][:,6:7]>0.375] = 0.25
+                AweightstheAD=torch.concat((AweightstheAD,AweightstheAD),axis=1)
+                
+                BweightstheAD = torch.zeros((nb,1), dtype=pi.dtype, device=self.device)+1.5
+                BweightstheAD[Btbox[i][:,6:7]>0.375] = 0.25
+                BweightstheAD=torch.concat((BweightstheAD,BweightstheAD),axis=1)
+                
+                #if(torch.sum(Atbox[i][:,6:7]>0.375)>0):
+                #    print("na,nb,n: ",na,nb,n)
+                #    print("AweightstheAD: ",AweightstheAD)
+                #    print("BweightstheAD: ",BweightstheAD)
+                #    sys.exit()
                 
                 
                 lossxy  = self.MSEwh(Apbox[:,0:2], Atbox[i][:,0:2]) + self.MSEwh(Bpbox[:,0:2], Btbox[i][:,0:2])
-                lossthe = self.MSEwh(Apbox[:,2:6], Atbox[i][:,2:6]) + self.MSEwh(Bpbox[:,2:6], Btbox[i][:,2:6])
+                losstheAD =  torch.sum(self.MSEthetaAD(Apbox[:,2:4], Atbox[i][:,2:4]) * AweightstheAD) / (na*2)+  torch.sum(self.MSEthetaAD(Bpbox[:,2:4], Btbox[i][:,2:4]) * BweightstheAD) / (nb*2)
+                losstheAB = self.MSEwh(Apbox[:,4:6], Atbox[i][:,4:6]) + self.MSEwh(Bpbox[:,4:6], Btbox[i][:,4:6])
                 losslen = self.MSEwh(Apbox[:,6:7], Atbox[i][:,6:7]) + self.MSEwh(Bpbox[:,6:7], Btbox[i][:,6:7])
                 
-                lbox += lossxy * 1.5 + losslen * 0.75 + lossthe * 1.5
+                lbox += lossxy * 1 + losslen * 0.75 + losstheAB * 0.75 + losstheAD * 2
                     
                 #iou = bbox_iou(pbox, tbox[i], CIoU=True).squeeze()  # iou(prediction, target)
                 #lbox += (1.0 - iou).mean()  # iou loss

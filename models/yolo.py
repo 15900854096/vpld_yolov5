@@ -221,7 +221,7 @@ class DetectionModel(BaseModel):
         self.model, self.save = parse_model(deepcopy(self.yaml), ch=[ch])  # model, savelist
         self.names = [str(i) for i in range(self.yaml['nc'])]  # default names
         self.inplace = self.yaml.get('inplace', True)
-        print("self.model: ",self.model)
+        #print("self.model: ",self.model)
         # Build strides, anchors
         m = self.model[-1]  # Detect()
         if isinstance(m, (Detect, Segment)):
