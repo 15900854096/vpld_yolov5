@@ -269,8 +269,9 @@ def run(
             
             #translation
             lengPre = torch.full((predn.shape[0] ,1), default_vlot_depth, device=device)
-            hlotPre_idx = torch.tensor(range(predn.shape[0]), device=device)[predn[0,2]*ori_shape[0] > default_hlot_min_width]
-            lengPre[hlotPre_idx,0:1]=default_hlot_depth
+            lengPre[predn[:,2]*ori_shape[0] > default_hlot_min_width,0:1] = default_hlot_depth
+            #hlotPre_idx = torch.tensor(range(predn.shape[0]), device=device)[predn[0,2]*ori_shape[0] > default_hlot_min_width]
+            #lengPre[hlotPre_idx,0:1]=default_hlot_depth
 
             # 0 1  2   3  4  5  6  7    8
             # x y len c1 s1 c2 s2 conf cls base_ori(x1 y1) BatchNorm1(other)
@@ -311,10 +312,14 @@ def run(
                 labelsn = labels
                 #lebels: label x1 y1 x2 y2 x3 y3  base_ori&depth_ok
                 
-            
                 #predn:   x1 y1 x2 y2 x3 y3 conf cls  base_ori
                 #labelsn: label x1 y1 x2 y2 x3 y3  base_ori&depth_ok
                 correct = process_batch(predn, labelsn, iouv)
+                # if(sum(lengGt[hlotGT_idx,0:1])>1):
+                #     print("predn: ",predn)
+                #     print("labelsn :",labelsn)
+                #     print("iouv: ",correct)
+                #     sys.exit()
                 if plots:
                     confusion_matrix.process_batch(predn, labelsn)
             stats.append((correct, pred[:, 7], pred[:, 8], labels[:, 0]))  # (correct, conf, pcls, tcls)

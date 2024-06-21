@@ -3,6 +3,7 @@
 Common modules
 """
 
+import sys
 import ast
 import contextlib
 import json
@@ -60,6 +61,28 @@ class Conv(nn.Module):
         return self.act(self.conv(x))
 
 
+# class MergeDiffSizeBufferConv(nn.Module):
+#     def __init__(self, listch):
+#         super().__init__()
+#         c1,c2,c3 = listch
+#         self.conv8to16 = nn.Conv2d(c1, c2, 3, 2, 1, groups=1, dilation=1, bias=True)
+#         self.bn8to16 = nn.BatchNorm2d(c2)
+#         self.act8to16 = nn.ReLU()
+        
+#         self.conv16to32 = nn.Conv2d(c2, c3, 3, 2, 1, groups=1, dilation=1, bias=True)
+#         self.bn16to32 = nn.BatchNorm2d(c3)
+#         self.act16to32 = nn.ReLU()
+        
+#         self.backbone8to16 = nn.Sequential(*(self.conv8to16,self.bn8to16,self.act8to16))
+#         self.backbone16to32 = nn.Sequential(*(self.conv16to32,self.bn16to32,self.act16to32))
+        
+#     def forward(self, x):
+#         feat8, feat16, feat32 = x
+#         temp1 = self.backbone8to16(feat8)
+#         temp2 = torch.add(temp1,feat16)
+#         res = torch.add(self.backbone16to32(temp2),feat32)
+#         return res
+       
 class MergeDiffSizeBufferConv(nn.Module):
     def __init__(self, listch):
         super().__init__()
@@ -68,20 +91,22 @@ class MergeDiffSizeBufferConv(nn.Module):
         self.bn8to16 = nn.BatchNorm2d(c2)
         self.act8to16 = nn.ReLU()
         
-        self.conv16to32 = nn.Conv2d(c2, c3, 3, 2, 1, groups=1, dilation=1, bias=True)
-        self.bn16to32 = nn.BatchNorm2d(c3)
-        self.act16to32 = nn.ReLU()
+        self.conv32to16 = nn.ConvTranspose2d(c3,c2,kernel_size = 2, stride = 2,padding = 0) #DWConv(c2, c3)
+        self.bn32to16 = nn.BatchNorm2d(c2)
+        self.act32to16 = nn.ReLU()
         
         self.backbone8to16 = nn.Sequential(*(self.conv8to16,self.bn8to16,self.act8to16))
-        self.backbone16to32 = nn.Sequential(*(self.conv16to32,self.bn16to32,self.act16to32))
+        self.backbone32to16 = nn.Sequential(*(self.conv32to16,self.bn32to16,self.act32to16))
         
     def forward(self, x):
         feat8, feat16, feat32 = x
+
         temp1 = self.backbone8to16(feat8)
-        temp2 = torch.add(temp1,feat16)
-        res = torch.add(self.backbone16to32(temp2),feat32)
-        return res
-       
+        temp2 = torch.add(temp1,feat16) 
+        temp3 = self.backbone32to16(feat32)
+        res = torch.add(temp2,temp3)
+
+        return res       
        
 
 class DecoupConv(nn.Module):
@@ -93,8 +118,8 @@ class DecoupConv(nn.Module):
         self.regBchanel = (int)((c2-clsnum)/2-1)
         self.clsBchanel = 1 + clsnum
         
-        halfchanel = int(c1/2)
-        quarterchanel = int(c1/4)
+        halfchanel = int(c1)
+        quarterchanel = int(c1/2)
         self.conv_neckA = nn.Sequential(Conv(c1, halfchanel, k, s), Conv(halfchanel, quarterchanel, k, s))
         self.conv_neckB = nn.Sequential(Conv(c1, halfchanel, k, s), Conv(halfchanel, quarterchanel, k, s))
         self.conv_regA = nn.Sequential(Conv(quarterchanel, quarterchanel, k, s), nn.Conv2d(quarterchanel, self.regAchanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))

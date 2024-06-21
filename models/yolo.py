@@ -57,7 +57,7 @@ class Detect(nn.Module):
         #self.m = nn.ModuleList(nn.Conv2d(x, self.no * self.na, 1) for x in ch)  # output conv
 
         self.m_pre = MergeDiffSizeBufferConv(ch)
-        self.m    = DecoupConv(ch[-1], self.no, self.nc , self.na, 3)
+        self.m    = DecoupConv(ch[-2], self.no, self.nc , self.na, 3)
         
         self.inplace = inplace  # use inplace ops (e.g. slice assignment)
 

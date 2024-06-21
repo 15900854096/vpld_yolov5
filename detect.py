@@ -33,7 +33,7 @@ import os
 import platform
 import sys
 from pathlib import Path
-
+import numpy as np
 import torch
 
 FILE = Path(__file__).resolve()
@@ -125,8 +125,25 @@ def run(
         # Inference
         with dt[1]:
             visualize = increment_path(save_dir / Path(path).stem, mkdir=True) if visualize else False
+            # fo = open(r"./onnx_output/input.txt", "w")
+            # im1=np.array(im.cpu())
+            # print(im1.shape)
+            # for i in range(im1.shape[0]):
+            #         for j in range(im1.shape[1]):
+            #             for k in range(im1.shape[2]):
+            #                 for l in range(im1.shape[3]):
+            #                     fo.write("%0.4f"%im1[i,j,k,l])
+            #                     fo.write("\n")
             pred = model(im, augment=augment, visualize=visualize)
-
+            # pred1=np.array(pred[0].cpu())
+            # print(pred1.shape)
+            # fo = open(r"./onnx_output/output.txt", "w")
+            # for i in range(pred1.shape[0]):
+            #         for j in range(pred1.shape[1]):
+            #             for k in range(pred1.shape[2]):
+            #                     fo.write("%0.4f"%pred1[i,j,k])
+            #                     fo.write("\n")
+            #sys.exit()
         # NMS
         with dt[2]:
             pred = non_max_suppression(pred, conf_thres, iou_thres, imgsz[0], classes, agnostic_nms, max_det=max_det)

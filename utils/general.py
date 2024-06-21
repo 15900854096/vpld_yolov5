@@ -941,6 +941,8 @@ def non_max_suppression(
         Ax=Ax[Ax_idx]
         Bx=Bx[Bx_idx]
         
+        # print("Ax:  ",Ax)
+        # print("Bx:  ",Bx)
         for Apidx, Ap in enumerate(Ax):
             for Bpidx, Bp in enumerate(Bx):
                 cls = list(Bp[16:])
