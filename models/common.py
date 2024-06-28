@@ -118,13 +118,27 @@ class DecoupConv(nn.Module):
         self.regBchanel = (int)((c2-clsnum)/2-1)
         self.clsBchanel = 1 + clsnum
         
-        halfchanel = int(c1)
-        quarterchanel = int(c1/2)
+        halfchanel = int(c1/2)
+        quarterchanel = int(c1/4)
+        cpuchanel = int(c1/16)
         self.conv_neckA = nn.Sequential(Conv(c1, halfchanel, k, s), Conv(halfchanel, quarterchanel, k, s))
         self.conv_neckB = nn.Sequential(Conv(c1, halfchanel, k, s), Conv(halfchanel, quarterchanel, k, s))
-        self.conv_regA = nn.Sequential(Conv(quarterchanel, quarterchanel, k, s), nn.Conv2d(quarterchanel, self.regAchanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
+        #self.conv_regA = nn.Sequential(Conv(quarterchanel, quarterchanel, k, s), nn.Conv2d(quarterchanel, self.regAchanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
+        self.conv_regAbone = Conv(quarterchanel, quarterchanel, k, s)
+        self.conv_regAbonepadding = Conv(quarterchanel, cpuchanel, k, s)
+        self.conv_regAxy   = nn.Conv2d(quarterchanel, 2, 3, 1, autopad(3), groups=1, dilation=1, bias=True)
+        self.conv_regAc1s1 = nn.Conv2d(cpuchanel, 2, 3, 1, autopad(3), groups=1, dilation=1, bias=True)
+        self.conv_regAoth  = nn.Conv2d(quarterchanel, self.regAchanel - 4, 3, 1, autopad(3), groups=1, dilation=1, bias=True)
+        
+        
         self.conv_clsA = nn.Sequential(Conv(quarterchanel, quarterchanel, k, s), nn.Conv2d(quarterchanel, self.clsAchanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
-        self.conv_regB = nn.Sequential(Conv(quarterchanel, quarterchanel, k, s), nn.Conv2d(quarterchanel, self.regBchanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
+        #self.conv_regB = nn.Sequential(Conv(quarterchanel, quarterchanel, k, s), nn.Conv2d(quarterchanel, self.regBchanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
+        self.conv_regBbone = Conv(quarterchanel, quarterchanel, k, s)
+        self.conv_regBbonepadding = Conv(quarterchanel, cpuchanel, k, s)
+        self.conv_regBxy =  nn.Conv2d(quarterchanel, 2, 3, 1, autopad(3), groups=1, dilation=1, bias=True)
+        self.conv_regBc1s1 =  nn.Conv2d(cpuchanel, 2, 3, 1, autopad(3), groups=1, dilation=1, bias=True)
+        self.conv_regBoth =  nn.Conv2d(quarterchanel, self.regBchanel-4, 3, 1, autopad(3), groups=1, dilation=1, bias=True)
+        
         self.conv_clsB = nn.Sequential(Conv(quarterchanel, quarterchanel, k, s), nn.Conv2d(quarterchanel, self.clsBchanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
         
         # self.conv1 = Conv(c1, 2*c1, k, s)
@@ -136,11 +150,25 @@ class DecoupConv(nn.Module):
     def forward(self, x):
         Aneck = self.conv_neckA(x)
         Bneck = self.conv_neckB(x)
-        regA  = self.conv_regA(Aneck)
+        
+        #regA  = self.conv_regA(Aneck)
+        regA  = self.conv_regAbone(Aneck)
+        regApadding  = self.conv_regAbonepadding(Aneck)
+        
+        Axy = self.conv_regAxy(regA)
+        Ac1s1 = self.conv_regAc1s1(regApadding)
+        Aoth = self.conv_regAoth(regA)
         clsA  = self.conv_clsA(Aneck)
-        regB  = self.conv_regB(Bneck)
+        
+        
+        #regB  = self.conv_regB(Bneck)
+        regB  = self.conv_regBbone(Bneck)
+        regBpadding  = self.conv_regBbonepadding(Bneck)
+        Bxy = self.conv_regBxy(regB)
+        Bc1s1 = self.conv_regBc1s1(regBpadding)
+        Both = self.conv_regBoth(regB)
         clsB  = self.conv_clsB(Bneck)
-        res = torch.cat( (regA,clsA,regB,clsB) ,1)
+        res = torch.cat( (Axy,Ac1s1,Aoth,clsA,Bxy,Bc1s1,Both,clsB) ,1)
         return res
         #return torch.cat(  (self.convA(self.conv1_next(self.conv1(x))), self.convB(self.conv2_next(self.conv2(x))))  ,1)
 
