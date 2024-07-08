@@ -85,10 +85,12 @@ def process_batch(detections, labels, iouv):
     Returns:
         correct (array[N, 10]), for 10 IoU levels
     """
+    #predn:   x1 y1 x2 y2 x3 y3 x4 y4 conf cls   all base_ori
+    #labelsn: label x1 y1 x2 y2 x3 y3 x4 y4 base_ori&depth_ok
     correct = np.zeros((detections.shape[0], iouv.shape[0])).astype(bool)
     #iou = box_iou(labels[:, 1:], detections[:, :6])
-    iou = box_iou_poly(labels[:, 1:], detections[:, :6])
-    correct_class = labels[:, 0:1] == detections[:, 7]
+    iou = box_iou_poly(labels[:, 1:], detections[:, :8])
+    correct_class = labels[:, 0:1] == detections[:, 9]
     for i in range(len(iouv)):
         x = torch.where((iou >= iouv[i]) & correct_class)  # IoU > threshold and classes match
         if x[0].shape[0]:
@@ -239,33 +241,39 @@ def run(
                                         multi_label=True,
                                         agnostic=single_cls,
                                         max_det=max_det)
-            # 0 1  2   3  4  5  6  7    8
-            # x y len c1 s1 c2 s2 conf cls  x&y:base_640  others:normal 1
+            
+            # 0 1  2   3  4  5   6   7   8   9   10
+            # x y len c1 s1 ADc ADs BCc BCs conf cls x&y:base_640  others:normal 1
         # Metrics
         for si, pred in enumerate(preds):
             ori_shape = shapes[si][0]
             ipt_shape = shapes[si][1]
-            labels = targets[targets[:, 0] == si, 1:][:,:7] #lebels: label x1 y1 x2 y2 x3 y3   all is BatchNorm_1
-            labels[:, 1:] *= torch.tensor((ori_shape[0], ori_shape[0], ori_shape[0], ori_shape[0], ori_shape[0], ori_shape[0]), device=device)#lebels: label x1 y1 x2 y2 x3 y3   all is base_ori
+            labels = targets[targets[:, 0] == si, 1:][:,:9] #lebels: label x1 y1 x2 y2 x3 y3 x4 y4  all is BatchNorm_1
+            labels[:, 1:] *= torch.tensor((ori_shape[0], ori_shape[0], ori_shape[0], ori_shape[0], ori_shape[0], ori_shape[0], ori_shape[0], ori_shape[0]), device=device)#lebels: label x1 y1 x2 y2 x3 y3 x4 y4  all is base_ori
             nl, npr = labels.shape[0], pred.shape[0]  # number of labels, predictions
             path = Path(paths[si])
             correct = torch.zeros(npr, niou, dtype=torch.bool, device=device)  # init
             seen += 1
 
+            #padding: cal map not care about label whether right
+            if 0 == hyp["CAREABOUT_LOT_TYPE"]:
+                labels[:,0:1] = 0
+                pred[:, 10] = 0
+                
             if npr == 0:
                 if nl:
-                    stats.append((correct, *torch.zeros((2, 0), device=device), labels[:, 0]))
+                    stats.append((correct, *torch.zeros((2, 0), device=device), labels[:, 0])) # (correct, conf, pcls, tcls)
                     if plots:
                         confusion_matrix.process_batch(detections=None, labels=labels[:, 0])
                 continue
 
             # Predictions
             if single_cls:
-                pred[:, 8] = 0
+                pred[:, 10] = 0
             predn = pred.clone() 
-            # x y len c1 s1 c2 s2 conf cls base_ipt(x1 y1) BatchNorm1(other)
+            # x y len c1 s1 ADc ADs BCc BCs conf cls base_ipt(x1 y1) BatchNorm1(other)
             scale_boxes(im[si].shape[1:], predn[:, :2], ori_shape, ipt_shape)  # native-space pred  only process x1 y1 ## base_640 to base_ori
-            # x y len c1 s1 c2 s2 conf cls base_ori(x1 y1) BatchNorm1(other)
+            # x y len c1 s1 ADc ADs BCc BCs conf cls base_ori(x1 y1) BatchNorm1(other)
             
             #translation
             lengPre = torch.full((predn.shape[0] ,1), default_vlot_depth, device=device)
@@ -273,25 +281,23 @@ def run(
             #hlotPre_idx = torch.tensor(range(predn.shape[0]), device=device)[predn[0,2]*ori_shape[0] > default_hlot_min_width]
             #lengPre[hlotPre_idx,0:1]=default_hlot_depth
 
-            # 0 1  2   3  4  5  6  7    8
-            # x y len c1 s1 c2 s2 conf cls base_ori(x1 y1) BatchNorm1(other)
-            tmp=torch.zeros(predn.shape[0],8,device=device)
-            tmp[:,:2] = predn[:,:2]
-            tmp[:,2:3] = tmp[:,0:1] + predn[:,2:3]*ori_shape[0]*predn[:,3:4]
-            tmp[:,3:4] = tmp[:,1:2] + predn[:,2:3]*ori_shape[1]*predn[:,4:5]
-            tmp[:,4:5] = tmp[:,2:3] + lengPre[:,0:1]*predn[:,5:6]
-            tmp[:,5:6] = tmp[:,3:4] + lengPre[:,0:1]*predn[:,6:7]
-            tmp[:,6:7] = predn[:,7:8]
-            tmp[:,7:8] = predn[:,8:9]
+            # 0 1  2   3  4  5  6    7   8    9   10
+            # x y len c1 s1 ADc ADs BCc BCs conf cls base_ori(x1 y1) BatchNorm1(other)
+            tmp=torch.zeros(predn.shape[0],10,device=device)
+            tmp[:,:2] = predn[:,:2]#x1 y1
+            tmp[:,2:3] = tmp[:,0:1] + predn[:,2:3]*ori_shape[0]*predn[:,3:4] #x2
+            tmp[:,3:4] = tmp[:,1:2] + predn[:,2:3]*ori_shape[1]*predn[:,4:5] #y2
+            tmp[:,4:5] = tmp[:,2:3] + lengPre[:,0:1]*predn[:,7:8] #x3
+            tmp[:,5:6] = tmp[:,3:4] + lengPre[:,0:1]*predn[:,8:9] #y3
+            
+            tmp[:,6:7] = tmp[:,0:1] + lengPre[:,0:1]*predn[:,5:6] #x4
+            tmp[:,7:8] = tmp[:,1:2] + lengPre[:,0:1]*predn[:,6:7] #y4
+            
+            tmp[:,8:9] = predn[:,9:10]
+            tmp[:,9:10] = predn[:,10:11]
             predn = tmp
-            # 0   1  2  3  4  5  6    7    
-            # x1 y1 x2 y2 x3 y3 conf cls   all base_ori
-            
-            
-            #padding: cal map not care about label whether right
-            if 0 == hyp["CAREABOUT_LOT_TYPE"]:
-                labels[:,0:1] = 0
-                predn[:,7:8] = 0
+            # 0   1  2  3  4  5  6  7  8    9
+            # x1 y1 x2 y2 x3 y3 x4 y4 conf cls   all base_ori
             
             # Evaluate
             if nl:
@@ -299,21 +305,27 @@ def run(
                 #scale_boxes(im[si].shape[1:], tbox, shape, shapes[si][1])  # native-space labels  #base_640 to base_ori
                 #labelsn = torch.cat((labels[:, 0:1], tbox), 1)  # native-space labels #lebels: label x1 y1 x2 y2 x3 y3
                 
-                #          0    1  2  3  4  5  6
-                #lebels: label x1 y1 x2 y2 x3 y3  base_ori&depth_bad
+                #          0    1  2  3  4  5  6  7  8
+                #lebels: label x1 y1 x2 y2 x3 y3 x4 y4 base_ori&depth_bad
                 #labels中库位深度(pt2->pt3)是假值且不统一，需要设计成固定值，方便和pred联合计算iou
                 lengGt = torch.full((labels.shape[0] ,1), default_vlot_depth, device=device)
                 widthGt = torch.sqrt((labels[:,3] - labels[:,1])**2+(labels[:,4] - labels[:,2])**2)
                 hlotGT_idx = torch.tensor(range(labels.shape[0]), device=device)[widthGt > default_hlot_min_width]
                 lengGt[hlotGT_idx,0:1] = default_hlot_depth
-                theta = torch.atan2(labels[:,6:7] - labels[:,4:5],labels[:,5:6] - labels[:,3:4])
-                labels[:,5:6] = torch.cos(theta)*lengGt + labels[:,3:4]
-                labels[:,6:7] = torch.sin(theta)*lengGt + labels[:,4:5]
-                labelsn = labels
-                #lebels: label x1 y1 x2 y2 x3 y3  base_ori&depth_ok
+                thetaBC = torch.atan2(labels[:,6:7] - labels[:,4:5],labels[:,5:6] - labels[:,3:4])
+                thetaAD = torch.atan2(labels[:,8:9] - labels[:,2:3],labels[:,7:8] - labels[:,1:2])
                 
-                #predn:   x1 y1 x2 y2 x3 y3 conf cls  base_ori
-                #labelsn: label x1 y1 x2 y2 x3 y3  base_ori&depth_ok
+                labels[:,5:6] = torch.cos(thetaBC)*lengGt + labels[:,3:4]
+                labels[:,6:7] = torch.sin(thetaBC)*lengGt + labels[:,4:5]
+                
+                labels[:,7:8] = torch.cos(thetaAD)*lengGt + labels[:,1:2]
+                labels[:,8:9] = torch.sin(thetaAD)*lengGt + labels[:,2:3]
+                
+                labelsn = labels
+                #lebels: label x1 y1 x2 y2 x3 y3 x4 y4 base_ori&depth_ok
+                
+                #predn:   x1 y1 x2 y2 x3 y3 x4 y4 conf cls   all base_ori
+                #labelsn: label x1 y1 x2 y2 x3 y3 x4 y4 base_ori&depth_ok
                 correct = process_batch(predn, labelsn, iouv)
                 # if(sum(lengGt[hlotGT_idx,0:1])>1):
                 #     print("predn: ",predn)
@@ -322,7 +334,7 @@ def run(
                 #     sys.exit()
                 if plots:
                     confusion_matrix.process_batch(predn, labelsn)
-            stats.append((correct, pred[:, 7], pred[:, 8], labels[:, 0]))  # (correct, conf, pcls, tcls)
+            stats.append((correct, pred[:, 9], pred[:, 10], labels[:, 0]))  # (correct, conf, pcls, tcls)
 
             # Save/log
             if save_txt:

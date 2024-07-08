@@ -148,11 +148,11 @@ class ConfusionMatrix:
                 self.matrix[self.nc, gc] += 1  # background FN
             return
 
-        detections = detections[detections[:, 4] > self.conf]
+        detections = detections[detections[:, 8] > self.conf]
         gt_classes = labels[:, 0].int()
-        detection_classes = detections[:, 7].int()
+        detection_classes = detections[:, 9].int()
         #iou = box_iou(labels[:, 1:], detections[:, :4])
-        iou = box_iou_poly(labels[:, 1:], detections[:, :6])
+        iou = box_iou_poly(labels[:, 1:], detections[:, :8])
         x = torch.where(iou > self.iou_thres)
         if x[0].shape[0]:
             matches = torch.cat((torch.stack(x, 1), iou[x[0], x[1]][:, None]), 1).cpu().numpy()
@@ -393,11 +393,12 @@ def box_iou_poly(box1, box2, eps=1e-7):
         iou (Tensor[N, M]): the NxM matrix containing the pairwise
             IoU values for every element in boxes1 and boxes2
     """
-    
+    #predn:   x1 y1 x2 y2 x3 y3 x4 y4 all base_ori
+    #labelsn: x1 y1 x2 y2 x3 y3 x4 y4 base_ori&depth_ok
     N = box1.shape[0]
     M = box2.shape[0]
-    tmp1=torch.cat((box1,box1[:,0:2]+box1[:,4:6]-box1[:,2:4]),1)
-    tmp2=torch.cat((box2,box2[:,0:2]+box2[:,4:6]-box2[:,2:4]),1)
+    tmp1=box1 #torch.cat((box1,box1[:,0:2]+box1[:,4:6]-box1[:,2:4]),1)
+    tmp2=box2 #torch.cat((box2,box2[:,0:2]+box2[:,4:6]-box2[:,2:4]),1)
     
     ioumat=torch.zeros((N,M),device = box1.device)
     for i in range(N):

@@ -153,8 +153,8 @@ def run(
 
         # Process predictions
         for i, det in enumerate(pred):  # per image
-            #     0 1  2   3    4    5    6    7    8
-            #det: x y len cos1 sin1 cos2 sin2 conf cls
+            # 0 1  2   3  4  5   6   7   8   9   10
+            # x y len c1 s1 ADc ADs BCc BCs conf cls x&y:base_640  others:normal 1
             seen += 1
             if webcam:  # batch_size >= 1
                 p, im0, frame = path[i], im0s[i].copy(), dataset.count
@@ -174,12 +174,12 @@ def run(
                 det[:, :2] = scale_boxes(im.shape[2:], det[:, :2], im0.shape).round() #base_640 to base_600
 
                 # Print results
-                for c in det[:, 8].unique():
-                    n = (det[:, 8] == c).sum()  # detections per class
+                for c in det[:, 10].unique():
+                    n = (det[:, 10] == c).sum()  # detections per class
                     s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
 
                 # Write results
-                for *xylenc1s1c2s2, conf, cls in reversed(det):
+                for *xylenc1s1ADcADsBCcBCs, conf, cls in reversed(det):
                     #if save_txt:  # Write to file
                     #    xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
                     #    line = (cls, *xywh, conf) if save_conf else (cls, *xywh)  # label format
@@ -187,18 +187,21 @@ def run(
                     #        f.write(('%g ' * len(line)).rstrip() % line + '\n')
 
                     if save_img or save_crop or view_img:  # Add bbox to image
-                        x,y,leng,c1,s1,c2,s2 = xylenc1s1c2s2
+                        x,y,leng,c1,s1,ADc,ADs,BCc,BCs = xylenc1s1ADcADsBCcBCs
                         h,w,c = im0.shape
                         leng = leng*w
                         p1 = (round(float(x)) , round(float(y)))
                         p2 = (round(float(x+leng*c1)) , round(float(y+leng*s1)))
-                        p3 = (round(float(x+leng*c1+100*c2)) , round(float(y+leng*s1+100*s2)))
+                        p3 = (round(float(p2[0]+100*BCc)) , round(float(p2[1]+100*BCs)))
+                        p4 = (round(float(p1[0]+100*ADc)) , round(float(p1[1]+100*ADs)))
+                        #print(p1,p2,p3,p4)
                         if(cls==0):
                             color = (0,255,0)
                         else:
                             color = (0,0,255)    
                         cv2.arrowedLine(im0, p1, p2, color, 2, 4)
-                        cv2.arrowedLine(im0, p2, p3, color, 2, 4)                        
+                        cv2.arrowedLine(im0, p2, p3, color, 2, 4)
+                        cv2.arrowedLine(im0, p1, p4, color, 2, 4)
                         cv2.putText(im0,"%0.2f"%float(conf),(int(0.5*(p1[0]+p2[0])),int(0.5*(p1[1]+p2[1]))),cv2.FONT_HERSHEY_COMPLEX,1,(255,255,255),1)
                         #c = int(cls)  # integer class
                         #label = None if hide_labels else (names[c] if hide_conf else f'{names[c]} {conf:.2f}')

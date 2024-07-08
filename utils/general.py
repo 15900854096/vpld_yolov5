@@ -904,7 +904,7 @@ def non_max_suppression(
 
     t = time.time()
     mi = 16 + nc  # mask start index
-    output = [torch.zeros((0, 9 + nm), device=prediction.device)] * bs # 9 = x y len c1 s1 c2 s2 conf cls  base_640
+    output = [torch.zeros((0, 11 + nm), device=prediction.device)] * bs # 11 = x y len c1 s1 ADc ADs BCc BCs conf cls  base_640
     for xi, x in enumerate(prediction):  # image index, image inference
         # Apply constraints
         # x[((x[..., 2:4] < min_wh) | (x[..., 2:4] > max_wh)).any(1), 4] = 0  # width-height
@@ -974,7 +974,8 @@ def non_max_suppression(
                     bcangle = math.atan2(Bp[11], Bp[10])
                     adangle = math.atan2(Ap[3],  Ap[2])
                     tm = math.atan2((Bp[11]+Ap[3])/2, (Bp[10]+Ap[2])/2)
-                    npy = list([point0[0], point0[1], abdis, math.cos(abangle), math.sin(abangle), math.cos(tm), math.sin(tm), mean_conf]) + cls
+                    #npy = list([point0[0], point0[1], abdis, math.cos(abangle), math.sin(abangle), math.cos(tm), math.sin(tm), mean_conf]) + cls
+                    npy = list([point0[0], point0[1], abdis, math.cos(abangle), math.sin(abangle), Ap[2], Ap[3], Bp[10], Bp[11], mean_conf]) + cls
                     npy = np.array(npy)
                     npy=torch.tensor(npy).to(prediction.device)
                     temp.append(npy)
@@ -1004,10 +1005,10 @@ def non_max_suppression(
             continue
         x = torch.stack(temp,dim=0)
         
-        # 0 1  2  3  4  5  6   7    8    9
-        # x y len c1 s1 c2 s2 obj cls1 cls2
+        # 0 1  2  3  4   5   6    7   8   9   10   11
+        # x y len c1 s1 ADc ADs  BCc BCs obj cls1 cls2
         # Compute conf       
-        x[:, 8:] *= x[:, 7:8]  # conf = obj_conf * cls_conf
+        x[:, 10:] *= x[:, 9:10]  # conf = obj_conf * cls_conf
 
         '''
         # Box/Mask
@@ -1022,19 +1023,21 @@ def non_max_suppression(
             conf, j = x[:, 8:mi].max(1, keepdim=True)
             x = torch.cat((box, conf, j.float(), mask), 1)[conf.view(-1) > conf_thres]
         '''
-        # 0 1  2   3  4  5  6  7    8   9
-        # x y len c1 s1 c2 s2 conf cls cls2
-        new_mi = 10       
-        box = x[:, :7]
+        
+        # 0 1  2  3  4   5   6    7   8   9   10   11
+        # x y len c1 s1 ADc ADs  BCc BCs obj cls1 cls2
+        new_mi = 12       
+        box = x[:, :9]
         mask = x[:, new_mi:]
-        conf, j = x[:, 8:new_mi].max(1, keepdim=True)
+        conf, j = x[:, 10:new_mi].max(1, keepdim=True)
         x = torch.cat((box, conf, j.float(), mask), 1)[conf.view(-1) > conf_thres] 
-        # 0 1  2   3  4  5  6  7    8
-        # x y len c1 s1 c2 s2 conf cls
+        # 0 1  2   3  4  5   6   7   8   9   10
+        # x y len c1 s1 ADc ADs BCc BCs conf cls
+      
             
         # Filter by class
         if classes is not None:
-            x = x[(x[:, 8:9] == torch.tensor(classes, device=x.device)).any(1)]
+            x = x[(x[:, 10:11] == torch.tensor(classes, device=x.device)).any(1)]
 
         # Apply finite constraint
         # if not torch.isfinite(x).all():
@@ -1044,11 +1047,11 @@ def non_max_suppression(
         n = x.shape[0]  # number of boxes
         if not n:  # no boxes
             continue
-        x = x[x[:, 7].argsort(descending=True)[:max_nms]]  # sort by confidence and remove excess boxes
+        x = x[x[:, 9].argsort(descending=True)[:max_nms]]  # sort by confidence and remove excess boxes
 
         # Batched NMS
-        c = x[:, 8:9] * (0 if agnostic else max_wh)  # classes
-        boxes_pt, boxoth, scores = x[:, :2] + c, x[:, 2:7], x[:, 8]  # boxes (offset by class), scores
+        c = x[:, 10:11] * (0 if agnostic else max_wh)  # classes
+        boxes_pt, boxoth, scores = x[:, :2] + c, x[:, 2:9], x[:, 10]  # boxes (offset by class), scores
         boxes = torch.cat((boxes_pt, boxoth), 1)
         i = nms(boxes, imgsz, iou_thres) # torchvision.ops.nms(boxes, scores, iou_thres)  # NMS
         i = i[:max_det]  # limit detections
@@ -1216,8 +1219,8 @@ if Path(inspect.stack()[0].filename).parent.parent.as_posix() in inspect.stack()
 # Variables ------------------------------------------------------------------------------------------------------------
 
 def nms(boxes, imgsz=640, nms_thresh=0.1):
-    #           0 1  2   3    4    5    6  
-    #prediction:x y len cos1 sin1 cos2 sin2 
+    #             0 1  2   3  4  5   6   7   8   
+    # prediction: x y len c1 s1 ADc ADs BCc BCs 
     tmp = torch.zeros(boxes.shape[0],8,device=boxes.device)
     tmp[:,0:1] = boxes[:,0:1] # x1
     tmp[:,1:2] = boxes[:,1:2] # y1
@@ -1225,11 +1228,11 @@ def nms(boxes, imgsz=640, nms_thresh=0.1):
     tmp[:,2:3] = tmp[:,0:1] + boxes[:,2:3] * boxes[:,3:4] * imgsz # x2
     tmp[:,3:4] = tmp[:,1:2] + boxes[:,2:3] * boxes[:,4:5] * imgsz # y2
     
-    tmp[:,4:5] = tmp[:,2:3] + boxes[:,5:6] * imgsz * 0.25 # x3
-    tmp[:,5:6] = tmp[:,3:4] + boxes[:,6:7] * imgsz * 0.25 # y3
+    tmp[:,4:5] = tmp[:,2:3] + boxes[:,7:8] * imgsz * 0.25 # x3
+    tmp[:,5:6] = tmp[:,3:4] + boxes[:,8:9] * imgsz * 0.25 # y3
     
-    tmp[:,6:7] = tmp[:,0:1] + tmp[:,4:5] - tmp[:,2:3] # x4
-    tmp[:,7:8] = tmp[:,1:2] + tmp[:,5:6] - tmp[:,3:4] # y4
+    tmp[:,6:7] = tmp[:,0:1] + boxes[:,5:6] * imgsz * 0.25 # x4
+    tmp[:,7:8] = tmp[:,1:2] + boxes[:,6:7] * imgsz * 0.25 # y4
     
     boxes = tmp
     
