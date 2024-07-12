@@ -17,7 +17,7 @@ from multiprocessing.pool import Pool, ThreadPool
 from pathlib import Path
 from threading import Thread
 from urllib.parse import urlparse
-
+import sys
 import numpy as np
 import psutil
 import torch
@@ -692,7 +692,43 @@ class LoadImagesAndLabels(Dataset):
                                                  perspective=hyp['perspective'])
             '''
 
-        nl = len(labels)  # number of labels
+        
+        
+        
+        
+        
+        temp_labels = labels.copy()
+        temp_labels[:, 1:] *= self.img_size
+
+        fliter_lot_idx=[]
+        boarder_first  = 15
+        boarder_second = 30
+        for idx,lot in enumerate(temp_labels):
+            Ax,Ay,Bx,By,Cx,Cy,Dx,Dy=lot[1],lot[2],lot[3],lot[4],lot[5],lot[6],lot[7],lot[8]
+            direction_angle = math.atan2(Cy-Ay, Cx-Ax)
+            direction_leng = min(math.sqrt(math.pow(Ax-Dx,2)+math.pow(Ay-Dy,2)) , math.sqrt(math.pow(Bx-Cx,2)+math.pow(By-Cy,2)))
+            if(Ax<boarder_first or Ax>self.img_size-boarder_first or
+               Ay<boarder_first or Ay>self.img_size-boarder_first or
+               Bx<boarder_first or Bx>self.img_size-boarder_first or
+               By<boarder_first or By>self.img_size-boarder_first): #位于第一边界
+                continue
+            elif(Ax<boarder_second or Ax>self.img_size-boarder_second or
+               Ay<boarder_second or Ay>self.img_size-boarder_second or
+               Bx<boarder_second or Bx>self.img_size-boarder_second or
+               By<boarder_second or By>self.img_size-boarder_second) and (direction_leng<30): #位于第二边界并且长度很短
+                continue
+            fliter_lot_idx.append(idx)
+        labels = labels[fliter_lot_idx]
+        # if(len(fliter_lot_idx) != len(temp_labels)) :
+        #     print("self.im_files[index]: ", self.im_files[index])
+        #     print("fliter_lot_idx: ", fliter_lot_idx)
+        #     print("temp_labels: ", temp_labels)
+        #     print("temp_labels[fliter_lot_idx]: ", temp_labels[fliter_lot_idx])
+        #     print("labels: ", labels)
+        #     sys.exit()
+            
+        nl = len(labels)  # number of labels                   
+        
         #if nl:
         #    labels[:, 1:5] = xyxy2xywhn(labels[:, 1:5], w=img.shape[1], h=img.shape[0], clip=True, eps=1E-3)
         if self.augment:
