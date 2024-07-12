@@ -43,6 +43,10 @@ from utils import TryExcept, emojis
 from utils.downloads import curl_download, gsutil_getsize
 from utils.metrics import box_iou, fitness, bbox_iou_eval #bbox_iou_eval平行四边形求IOU
 
+default_vlot_depth = 200
+default_hlot_depth = 50 
+default_hlot_min_width = 200
+
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[1]  # YOLOv5 root directory
 RANK = int(os.getenv('RANK', -1))
@@ -731,6 +735,31 @@ def xyxy2xywh(x):
     y[..., 3] = x[..., 3] - x[..., 1]  # height
     return y
 
+#src: x y len c1 s1 ADc ADs BCc BCs x&y:base_640  others:normal 1
+#dst: x1 y1 x2 y2 x3 y3 x3 x4 batchnorm_1
+def xylentheta2pts4(lot,imgsz):
+    num = lot.shape[0]
+    
+    leng = torch.full((num ,1), default_vlot_depth)
+    leng[lot[:,2]*imgsz > default_hlot_min_width,0:1] = default_hlot_depth
+    
+    res = torch.zeros((num,8))
+    res[:,0:2] = lot[:,0:2] #x1 y1
+    
+    res[:,2:3] = res[:,0:1] + lot[:,2:3]*lot[:,3:4]*imgsz #x2
+    res[:,3:4] = res[:,1:2] + lot[:,2:3]*lot[:,4:5]*imgsz #y2
+    
+    res[:,4:5] = res[:,2:3] + lot[:,7:8]*leng  #x3
+    res[:,5:6] = res[:,3:4] + lot[:,8:9]*leng  #y3
+    
+    res[:,6:7] = lot[:,0:1] + lot[:,5:6]*leng  #x4
+    res[:,7:8] = lot[:,1:2] + lot[:,6:7]*leng  #y4
+    res[:,:] = res[:,:]/imgsz
+    return res
+    
+    
+            
+       
 
 def xywh2xyxy(x):
     # Convert nx4 boxes from [x, y, w, h] to [x1, y1, x2, y2] where xy1=top-left, xy2=bottom-right

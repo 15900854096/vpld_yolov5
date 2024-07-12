@@ -9,7 +9,7 @@ import os
 from copy import copy
 from pathlib import Path
 from urllib.error import URLError
-
+import sys
 import cv2
 import matplotlib
 import matplotlib.pyplot as plt
@@ -22,7 +22,7 @@ from scipy.ndimage.filters import gaussian_filter1d
 
 from utils import TryExcept, threaded
 from utils.general import (CONFIG_DIR, FONT, LOGGER, check_font, check_requirements, clip_boxes, increment_path,
-                           is_ascii, xywh2xyxy, xyxy2xywh)
+                           is_ascii, xywh2xyxy, xylentheta2pts4)
 from utils.metrics import fitness
 from utils.segment.general import scale_image
 
@@ -87,21 +87,29 @@ class Annotator:
     def box_label(self, box, label='', color=(128, 128, 128), txt_color=(255, 255, 255)):
         # Add one xyxy box to image with label
         if self.pil or not is_ascii(label):
-            self.draw.rectangle(box, width=self.lw, outline=color)  # box
+            #self.draw.rectangle(box, width=self.lw, outline=color)  # box
+            p1, p2, p3, p4 = (int(box[0]), int(box[1])), (int(box[2]), int(box[3])), (int(box[4]), int(box[5])), (int(box[6]), int(box[7]))
+            self.draw.line([p1,p2], fill=txt_color, width=self.lw)
+            self.draw.line([p2,p3], fill=txt_color, width=self.lw)
+            self.draw.line([p1,p4], fill=txt_color, width=self.lw)
             if label:
                 w, h = self.font.getsize(label)  # text width, height (WARNING: deprecated) in 9.2.0
                 # _, _, w, h = self.font.getbbox(label)  # text width, height (New)
                 outside = box[1] - h >= 0  # label fits outside box
-                self.draw.rectangle(
-                    (box[0], box[1] - h if outside else box[1], box[0] + w + 1,
-                     box[1] + 1 if outside else box[1] + h + 1),
-                    fill=color,
-                )
+                # self.draw.rectangle(
+                #     (box[0], box[1] - h if outside else box[1], box[0] + w + 1,
+                #      box[1] + 1 if outside else box[1] + h + 1),
+                #     fill=color,
+                # )
                 # self.draw.text((box[0], box[1]), label, fill=txt_color, font=self.font, anchor='ls')  # for PIL>8.0
                 self.draw.text((box[0], box[1] - h if outside else box[1]), label, fill=txt_color, font=self.font)
         else:  # cv2
-            p1, p2 = (int(box[0]), int(box[1])), (int(box[2]), int(box[3]))
-            cv2.rectangle(self.im, p1, p2, color, thickness=self.lw, lineType=cv2.LINE_AA)
+            # p1, p2 = (int(box[0]), int(box[1])), (int(box[2]), int(box[3]))
+            # cv2.rectangle(self.im, p1, p2, color, thickness=self.lw, lineType=cv2.LINE_AA)
+            p1, p2, p3, p4 = (int(box[0]), int(box[1])), (int(box[2]), int(box[3])), (int(box[4]), int(box[5])), (int(box[6]), int(box[7]))
+            cv2.arrowedLine(self.im, p1, p2, color, 2, 4)
+            cv2.arrowedLine(self.im, p2, p3, color, 2, 4)
+            cv2.arrowedLine(self.im, p1, p4, color, 2, 4)
             if label:
                 tf = max(self.lw - 1, 1)  # font thickness
                 w, h = cv2.getTextSize(label, 0, fontScale=self.lw / 3, thickness=tf)[0]  # text width, height
@@ -217,15 +225,16 @@ def butter_lowpass_filtfilt(data, cutoff=1500, fs=50000, order=5):
     return filtfilt(b, a, data)  # forward-backward filter
 
 
-def output_to_target(output, max_det=300):
+def output_to_target(output, imgsz, max_det=300):
     # Convert model output to target format [batch_id, class_id, x, y, w, h, conf] for plotting
+    #src: x y len c1 s1 ADc ADs BCc BCs conf cls x&y:base_640  others:normal 1
+    #dst: img_id cls x1 y1 x2 y2 x3 y3 x3 x4 conf batchnorm_1
     targets = []
     for i, o in enumerate(output):
-        box, conf, cls = o[:max_det, :6].cpu().split((4, 1, 1), 1)
+        box, conf, cls = o[:max_det, :11].cpu().split((9, 1, 1), 1) #box, conf, cls = o[:max_det, :6].cpu().split((4, 1, 1), 1)
         j = torch.full((conf.shape[0], 1), i)
-        targets.append(torch.cat((j, cls, xyxy2xywh(box), conf), 1))
+        targets.append(torch.cat((j, cls, xylentheta2pts4(box,imgsz), conf), 1)) #targets.append(torch.cat((j, cls, xyxy2xywh(box), conf), 1))
     return torch.cat(targets, 0).numpy()
-
 
 @threaded
 def plot_images(images, targets, paths=None, fname='images.jpg', names=None):
@@ -267,21 +276,22 @@ def plot_images(images, targets, paths=None, fname='images.jpg', names=None):
         annotator.rectangle([x, y, x + w, y + h], None, (255, 255, 255), width=2)  # borders
         if paths:
             annotator.text((x + 5, y + 5), text=Path(paths[i]).name[:40], txt_color=(220, 220, 220))  # filenames
+            #pass
         if len(targets) > 0:
             ti = targets[targets[:, 0] == i]  # image targets
-            boxes = xywh2xyxy(ti[:, 2:6]).T
+            boxes = ti[:,2:10].T #xywh2xyxy(ti[:, 2:6]).T
             classes = ti[:, 1].astype('int')
-            labels = ti.shape[1] == 6  # labels if no conf column
-            conf = None if labels else ti[:, 6]  # check for confidence presence (label vs pred)
+            labels = ti.shape[1] == 10  # labels if no conf column
+            conf = None if labels else ti[:, 10]  # check for confidence presence (label vs pred)
 
             if boxes.shape[1]:
                 if boxes.max() <= 1.01:  # if normalized with tolerance 0.01
-                    boxes[[0, 2]] *= w  # scale to pixels
-                    boxes[[1, 3]] *= h
+                    boxes[[0, 2, 4, 6]] *= w  # scale to pixels
+                    boxes[[1, 3, 5, 7]] *= h
                 elif scale < 1:  # absolute coords need scale if image scales
                     boxes *= scale
-            boxes[[0, 2]] += x
-            boxes[[1, 3]] += y
+            boxes[[0, 2, 4, 6]] += x
+            boxes[[1, 3, 5, 7]] += y
             for j, box in enumerate(boxes.T.tolist()):
                 cls = classes[j]
                 color = colors(cls)
@@ -290,6 +300,8 @@ def plot_images(images, targets, paths=None, fname='images.jpg', names=None):
                     label = f'{cls}' if labels else f'{cls} {conf[j]:.1f}'
                     annotator.box_label(box, label, color=color)
     annotator.im.save(fname)  # save
+    #cv2.imwrite(str(fname),annotator.im)
+    #sys.exit(1)
 
 
 def plot_lr_scheduler(optimizer, scheduler, epochs=300, save_dir=''):

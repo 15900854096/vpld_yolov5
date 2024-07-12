@@ -41,7 +41,7 @@ from utils.callbacks import Callbacks
 from utils.dataloaders import create_dataloader
 from utils.general import (LOGGER, TQDM_BAR_FORMAT, Profile, check_dataset, check_img_size, check_requirements,
                            check_yaml, coco80_to_coco91_class, colorstr, increment_path, non_max_suppression,
-                           print_args, scale_boxes, xywh2xyxy, xyxy2xywh)
+                           print_args, scale_boxes, xywh2xyxy, xyxy2xywh, default_vlot_depth, default_hlot_depth, default_hlot_min_width)
 from utils.metrics import ConfusionMatrix, ap_per_class, box_iou, box_iou_poly
 from utils.plots import output_to_target, plot_images, plot_val_study
 from utils.torch_utils import select_device, smart_inference_mode
@@ -49,9 +49,7 @@ from utils.torch_utils import select_device, smart_inference_mode
 with open(ROOT / 'data/hyps/hyp.scratch-low.yaml', errors='ignore') as f:
     hyp = yaml.safe_load(f)
 
-default_vlot_depth = 200
-default_hlot_depth = 50 
-default_hlot_min_width = 200
+
 
 def save_one_txt(predn, save_conf, shape, file):
     # Save one txt result
@@ -345,8 +343,11 @@ def run(
 
         # Plot images
         if plots and batch_i < 3:
+            #targets: img_id cls x1 y1 x2 y2 x3 y3 x3 x4 batchnorm_1
             plot_images(im, targets, paths, save_dir / f'val_batch{batch_i}_labels.jpg', names)  # labels
-            plot_images(im, output_to_target(preds), paths, save_dir / f'val_batch{batch_i}_pred.jpg', names)  # pred
+            #preds: x y len c1 s1 ADc ADs BCc BCs conf cls x&y:base_640  others:normal 1
+            #output_to_target(preds,imgsz): img_id cls x1 y1 x2 y2 x3 y3 x3 x4 conf batchnorm_1
+            plot_images(im, output_to_target(preds,imgsz), paths, save_dir / f'val_batch{batch_i}_pred.jpg', names)  # pred
 
         callbacks.run('on_val_batch_end', batch_i, im, targets, paths, shapes, preds)
     print("loss:",(loss.cpu() / len(dataloader)).tolist())
