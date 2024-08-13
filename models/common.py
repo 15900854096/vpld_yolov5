@@ -107,7 +107,39 @@ class MergeDiffSizeBufferConv(nn.Module):
         res = torch.add(temp2,temp3)
 
         return res       
-       
+
+class FreeSpaceConv(nn.Module):#16倍下采样到原图
+    def __init__(self, inch, outch):
+        super().__init__()
+        
+        midch = 128
+        halfmidch=(int)(midch/2)
+        squmidch=(int)(midch/4)
+        self.conv16to8 = nn.ConvTranspose2d(inch,midch,kernel_size = 2, stride = 2,padding = 0) #DWConv(c2, c3)
+        self.bn16to8 = nn.BatchNorm2d(midch)
+        self.act16to8 = nn.ReLU()
+        self.backbone16to8 = nn.Sequential(*(self.conv16to8,self.bn16to8,self.act16to8))
+        
+        self.conv8to4 = nn.ConvTranspose2d(midch,halfmidch,kernel_size = 2, stride = 2,padding = 0) #DWConv(c2, c3)
+        self.bn8to4 = nn.BatchNorm2d(halfmidch)
+        self.act8to4 = nn.ReLU()
+        self.backbone8to4 = nn.Sequential(*(self.conv8to4,self.bn8to4,self.act8to4))
+        
+        self.conv4to2 = nn.ConvTranspose2d(halfmidch,squmidch,kernel_size = 2, stride = 2,padding = 0) #DWConv(c2, c3)
+        self.bn4to2 = nn.BatchNorm2d(squmidch)
+        self.act4to2 = nn.ReLU()
+        self.backbone4to2 = nn.Sequential(*(self.conv4to2,self.bn4to2,self.act4to2))
+        
+        self.conv2to1 = nn.ConvTranspose2d(squmidch,outch,kernel_size = 2, stride = 2,padding = 0) #DWConv(c2, c3)
+        self.act2to1 = nn.Sigmoid()
+        self.backbone2to1 = nn.Sequential(*(self.conv2to1,self.act2to1))
+        
+    def forward(self, x):
+        x = self.backbone16to8(x)
+        x = self.backbone8to4(x)
+        x = self.backbone4to2(x)
+        x = self.backbone2to1(x)
+        return x        
 
 class DecoupConv(nn.Module):
     def __init__(self, c1, c2, clsnum, archornum, k=3, s=1):
