@@ -58,32 +58,37 @@ class Detect(nn.Module):
 
         self.m_pre = MergeDiffSizeBufferConv(ch)
         self.m    = DecoupConv(ch[-2], self.no, self.nc , self.na, 3)
+        self.fs = FreeSpaceConv(ch[-2], hyp["fs_num_class"])
         
         self.inplace = inplace  # use inplace ops (e.g. slice assignment)
 
     def forward(self, x):
-        z = []  # inference output
-        output=[0]
+        z = {"vpld":[],"fs":[]}  # inference output
+        #output=[0]
+        output={"vpld":[0],"fs":[0]}
         if hyp["EXPORT_ONNX"]:
             return self.m(self.m_pre(x))
-        for i in range(self.nl):
-            output[i] = self.m_pre(x)
-            output[i] = self.m(output[i])  # conv
-            bs, _, ny, nx = output[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
-            output[i] = output[i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
-
+        for i in range(self.nl):#这里的self.nl==1
+            temp = self.m_pre(x)
+            output["vpld"][i] = self.m(temp)  # conv
+			if(hpy["task_fs"]):
+	            output["fs"][i] = self.fs(temp)
+            
+            bs, _, ny, nx = output["vpld"][i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
+            output["vpld"][i] = output["vpld"][i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
+            
             if not self.training:  # inference
-                if self.dynamic or self.grid[i].shape[2:4] != output[i].shape[2:4]:
+                if self.dynamic or self.grid[i].shape[2:4] != output["vpld"][i].shape[2:4]:
                     self.grid[i], self.anchor_grid[i] = self._make_grid(nx, ny, i)
 
                 if isinstance(self, Segment):  # (boxes + masks)
-                    xy, wh, conf, mask = output[i].split((2, 2, self.nc + 1, self.no - self.nc - 5), 4)
+                    xy, wh, conf, mask = output["vpld"][i].split((2, 2, self.nc + 1, self.no - self.nc - 5), 4)
                     xy = (xy.sigmoid() * 2 + self.grid[i]) * self.stride[i]  # xy
                     wh = (wh.sigmoid() * 2) ** 2 * self.anchor_grid[i]  # wh
                     y = torch.cat((xy, wh, conf.sigmoid(), mask), 4)
                 else:  # Detect (boxes only)
                     #target-subset of predictions #pred: Ax Ay Ac1 As1 Ac2 As2 Alen Aobj  Bx By Bc1 Bs1  Bc2 Bs2 Blen Bobj cls1 cls2
-                    Axy, Ac1s1c2s2, Alen, Aobj, Bxy, Bc1s1c2s2, Blen, Bobj, class12 = output[i].split((2, 4, 1, 1, 2, 4, 1, 1, self.nc), 4)
+                    Axy, Ac1s1c2s2, Alen, Aobj, Bxy, Bc1s1c2s2, Blen, Bobj, class12 = output["vpld"][i].split((2, 4, 1, 1, 2, 4, 1, 1, self.nc), 4)
                     if hyp["USE_THREE_POSITIVE_SAMPLE"]:
                         Axy = (Axy.sigmoid()*2  + self.grid[i]) * self.stride[i]
                         Bxy = (Bxy.sigmoid()*2  + self.grid[i]) * self.stride[i]  # xy
@@ -104,8 +109,10 @@ class Detect(nn.Module):
                         class12[:,:,:,:,0] = 1
                         class12[:,:,:,:,1] = 0
                     y = torch.cat((Axy, Ac1s1c2s2, Alen, Aobj, Bxy, Bc1s1c2s2, Blen, Bobj, class12), 4)
-                z.append(y.view(bs, self.na * nx * ny, self.no)) #nhwc
-        return output if self.training else (torch.cat(z, 1),) if self.export else (torch.cat(z, 1), output)
+                z["vpld"].append(y.view(bs, self.na * nx * ny, self.no)) #nhwc
+                z["fs"].append(output["fs"][i]) #nhwc
+        return output if self.training else z if self.export else (z, output)
+        #return output if self.training else (torch.cat(z, 1),) if self.export else (torch.cat(z, 1), output)
 
     def _make_grid(self, nx=20, ny=20, i=0, torch_1_10=check_version(torch.__version__, '1.10.0')):
         d = self.anchors[i].device
@@ -228,7 +235,7 @@ class DetectionModel(BaseModel):
             s = 256  # 2x min stride
             m.inplace = self.inplace
             forward = lambda x: self.forward(x)[0] if isinstance(m, Segment) else self.forward(x)
-            m.stride = torch.tensor([s / x.shape[-2] for x in forward(torch.zeros(1, ch, s, s))])  # forward
+            m.stride = torch.tensor([s / x.shape[-2] for x in forward(torch.zeros(1, ch, s, s))["vpld"]])  # forward
             check_anchor_order(m)
             #m.anchors /= m.stride.view(-1, 1, 1)
             self.stride = m.stride

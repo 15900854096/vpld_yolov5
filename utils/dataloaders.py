@@ -46,6 +46,9 @@ LOCAL_RANK = int(os.getenv('LOCAL_RANK', -1))  # https://pytorch.org/docs/stable
 RANK = int(os.getenv('RANK', -1))
 PIN_MEMORY = str(os.getenv('PIN_MEMORY', True)).lower() == 'true'  # global pin_memory for dataloaders
 
+with open(ROOT / '../data/hyps/hyp.scratch-low.yaml', errors='ignore') as f:
+    hyp = yaml.safe_load(f)
+    
 # Get orientation exif tag
 for orientation in ExifTags.TAGS.keys():
     if ExifTags.TAGS[orientation] == 'Orientation':
@@ -433,6 +436,10 @@ def img2label_paths(img_paths):
     sa, sb = f'{os.sep}images{os.sep}', f'{os.sep}labels_txt{os.sep}'  # /images/, /labels/ substrings
     return [sb.join(x.rsplit(sa, 1)).rsplit('.', 1)[0] + '.txt' for x in img_paths]
 
+def img2mask_paths(img_paths):
+    sa, sb = f'{os.sep}images{os.sep}', f'{os.sep}labels_mask{os.sep}'
+    return [sb.join(x.rsplit(sa, 1)).rsplit('.', 1)[0] + '.jpg' for x in img_paths]
+
 
 class LoadImagesAndLabels(Dataset):
     # YOLOv5 train_loader/val_loader, loads images and labels for training and validation
@@ -486,6 +493,7 @@ class LoadImagesAndLabels(Dataset):
             raise Exception(f'{prefix}Error loading data from {path}: {e}\n{HELP_URL}') from e
 
         # Check cache
+        self.mask_files = img2mask_paths(self.im_files)  # labels
         self.label_files = img2label_paths(self.im_files)  # labels
         cache_path = (p if p.is_file() else Path(self.label_files[0]).parent).with_suffix('.cache')
         try:
@@ -671,10 +679,14 @@ class LoadImagesAndLabels(Dataset):
         else:
             # Load image
             img, (h0, w0), (h, w) = self.load_image(index)
-
+            if (hpy["task_fs"]):
+                mask, _, _ = self.load_mask(index)
+            else:
+                mask = np.zeros((h, w))
             # Letterbox
             shape = self.batch_shapes[self.batch[index]] if self.rect else self.img_size  # final letterboxed shape
             img, ratio, pad = letterbox(img, shape, auto=False, scaleup=self.augment)
+            mask, _, _ = letterbox(mask, shape, auto=False, scaleup=self.augment)
             shapes = (h0, w0), ((h / h0, w / w0), pad)  # for COCO mAP rescaling
 
             labels = self.labels[index].copy()
@@ -758,12 +770,14 @@ class LoadImagesAndLabels(Dataset):
             # Flip up-down
             if random.random() < hyp['flipud']:
                 img = np.flipud(img)
+                mask = np.flipud(mask)
                 if nl:
                     labels = gt_flipud(labels) #labels[:, 2] = 1 - labels[:, 2]
 
             # Flip left-right
             if random.random() < hyp['fliplr']:
                 img = np.fliplr(img)
+                mask = np.fliplr(mask)
                 if nl:
                     labels = gt_fliplr(labels) #labels[:, 1] = 1 - labels[:, 1]
             
@@ -771,7 +785,9 @@ class LoadImagesAndLabels(Dataset):
                 h,w,c = img.shape
                 ang = random.randint(-20, +20)
                 img, neww, newh, M = rotate_bound(img,ang)
+                mask, _, _, _ = rotate_bound(mask,ang)
                 img = cv2.resize(img, (w, h), interpolation=cv2.INTER_LINEAR)
+                mask = cv2.resize(mask, (w, h), interpolation=cv2.INTER_LINEAR)
                 if nl:
                     labels = gt_rotate(labels, w, h, neww, newh, M)
         
@@ -789,7 +805,10 @@ class LoadImagesAndLabels(Dataset):
         img = img.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
         img = np.ascontiguousarray(img)
 
-        return torch.from_numpy(img), labels_out, self.im_files[index], shapes
+        
+        mask = mask[np.newaxis, :, :]  #(h,w)->(1,h,w)  mask chanel must equal 1
+        mask = np.ascontiguousarray(mask)
+        return torch.from_numpy(img), labels_out, self.im_files[index], shapes, torch.from_numpy(mask)
 
     def load_image(self, i):
         # Loads 1 image from dataset index 'i', returns (im, original hw, resized hw)
@@ -808,6 +827,18 @@ class LoadImagesAndLabels(Dataset):
             return im, (h0, w0), im.shape[:2]  # im, hw_original, hw_resized
         return self.ims[i], self.im_hw0[i], self.im_hw[i]  # im, hw_original, hw_resized
 
+    def load_mask(self, i):
+        # Loads 1 image from dataset index 'i', returns (im, original hw, resized hw)
+        # read image
+        im = cv2.imread(self.mask_files[i],cv2.IMREAD_UNCHANGED)  # grey image
+        assert im is not None, f'Image Not Found {f}'
+        h0, w0 = im.shape[:2]  # orig hw
+        r = self.img_size / max(h0, w0)  # ratio
+        if r != 1:  # if sizes are not equal
+            interp = cv2.INTER_LINEAR if (self.augment or r > 1) else cv2.INTER_AREA
+            im = cv2.resize(im, (math.ceil(w0 * r), math.ceil(h0 * r)), interpolation=interp)
+        return im, (h0, w0), im.shape[:2]  # im, hw_original, hw_resized
+    
     def cache_images_to_disk(self, i):
         # Saves an image as an *.npy file for faster loading
         f = self.npy_files[i]
@@ -951,10 +982,10 @@ class LoadImagesAndLabels(Dataset):
 
     @staticmethod
     def collate_fn(batch):
-        im, label, path, shapes = zip(*batch)  # transposed
+        im, label, path, shapes, mask = zip(*batch)  # transposed
         for i, lb in enumerate(label):
             lb[:, 0] = i  # add target image index for build_targets()
-        return torch.stack(im, 0), torch.cat(label, 0), path, shapes #torch.cat(label, 0) concat at dims=0
+        return torch.stack(im, 0), torch.cat(label, 0), path, shapes, torch.stack(mask, 0) #torch.cat(label, 0) concat at dims=0
 
     @staticmethod
     def collate_fn4(batch):

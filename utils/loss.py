@@ -129,23 +129,33 @@ class ComputeLoss:
         self.balance = {3: [1.0, 1.0, 1.0]}.get(m.nl, [1.0, 1.0, 1.0, 1.0, 1.0])  # P3-P7
         self.ssi = list(m.stride).index(16) if autobalance else 0  # stride 16 index
         self.MSEwh, self.BCEcls, self.BCEobj, self.gr, self.hyp, self.autobalance = MSEwh, BCEcls, BCEobj, 1.0, h, autobalance
+        self.MSEfs = nn.MSELoss(reduction='sum')
         self.MSEobj = MSEobj
         self.MSEthetaAD = MSEthetaAD
         self.na = m.na  # number of anchors
         self.nc = m.nc  # number of classes
         self.nl = m.nl  # number of layers
         self.anchors = m.anchors
+        self.fs_num_class = h['fs_num_class']
         self.device = device
 
-    def __call__(self, p, targets):  # predictions, targets
+    def __call__(self, p, targets, masks):  # predictions, targets
         lcls = torch.zeros(1, device=self.device)  # class loss
         lbox = torch.zeros(1, device=self.device)  # box loss
         lobj = torch.zeros(1, device=self.device)  # object loss
+        lfs  = torch.zeros(1, device=self.device)  # object loss
         #tcls, tbox, indices, anchors = self.build_targets(p, targets)  # targets
-        tcls, Atbox, Aindices, Btbox, Bindices, anchors = self.build_targets(p, targets)
+        tcls, Atbox, Aindices, Btbox, Bindices, anchors = self.build_targets(p["vpld"], targets)
+        
+        vpld_weight=1
+        if hyp["task_fs"]:
+            fs_gt = self.build_fs_targets(masks)
+            lfs += self.MSEfs(p["fs"][0], fs_gt)/1000 #self.BCEcls(pcls, t)  # BCE
+            vpld_weight=10
+            
         random.seed(time.time_ns()%(2**32 - 1))
         # Losses
-        for i, pi in enumerate(p):  # layer index, layer predictions
+        for i, pi in enumerate(p["vpld"]):  # layer index, layer predictions
             Ab, Aa, Agj, Agi = Aindices[i]  # image, anchor, gridy, gridx
             Bb, Ba, Bgj, Bgi = Bindices[i]  # image, anchor, gridy, gridx
 
@@ -251,12 +261,12 @@ class ComputeLoss:
 
         if self.autobalance:
             self.balance = [x / self.balance[self.ssi] for x in self.balance]
-        lbox *= self.hyp['box']
-        lobj *= self.hyp['obj']
-        lcls *= self.hyp['cls']
+        lbox *= self.hyp['box']*vpld_weight
+        lobj *= self.hyp['obj']*vpld_weight
+        lcls *= self.hyp['cls']*vpld_weight
         bs = Atobj.shape[0]+Btobj.shape[0]  # batch size
 
-        return (lbox + lobj + lcls) * bs, torch.cat((lbox, lobj, lcls)).detach()
+        return (lbox + lobj + lcls) * bs+lfs, torch.cat((lbox, lobj, lcls, lfs)).detach()
 
     def build_targets(self, p, targets):   
         #translation
@@ -442,3 +452,10 @@ class ComputeLoss:
         # print("anch: ",anch)
         # sys.exit()
         return tcls, Atbox, Aindices, Btbox, Bindices, anch
+    
+    def build_fs_targets(self, masks):
+        bs, c, h, w=masks.shape
+        fs_gt = torch.zeros((bs, self.fs_num_class, h, w), dtype=masks.dtype, device=self.device)
+        for i in range(self.fs_num_class):
+            fs_gt[:,i:i+1] = masks[:]==i
+        return fs_gt.to(torch.float32)

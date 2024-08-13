@@ -30,20 +30,23 @@ translate: 0.1  # image translation (+/- fraction)
 scale: 0.5  # image scale (+/- gain)
 shear: 0.0  # image shear (+/- deg)
 perspective: 0.0  # image perspective (+/- fraction), range 0-0.001
-flipud: 0.5  # image flip up-down (probability)
-fliplr: 0.5  # image flip left-right (probability)
-rotate: 0.3  # image flip up-down (probability)
-resize: 0.1    # image resize (probability)
+flipud: 0  # image flip up-down (probability)
+fliplr: 0  # image flip left-right (probability)
+rotate: 0  # image flip up-down (probability)
+resize: 0    # image resize (probability)
 mosaic: 0.0  # image mosaic (probability)
 mixup: 0.0  # image mixup (probability)
 copy_paste: 0.0  # segment copy-paste (probability)
 
 hsv: 0.5
-cutblock: 0.2 #0.1
-rain: 0.15
-sunlight: 0.15
-GaussianNoise: 0.15
-AddPepperSaltNoise: 0.15
+cutblock: 0 #0.1
+rain: 0
+sunlight: 0
+GaussianNoise: 0
+AddPepperSaltNoise: 0
+
+task_fs: 1 #代表是否有多任务中的fs
+fs_num_class: 2
 
 CAREABOUT_LOT_TYPE: 0 #是否需要不关注库位类型，来测试库位的mAP
 USE_THREE_POSITIVE_SAMPLE: 0 #是否需要把一个正样本扩充为三个样本来预测，此策略来自于yolov5
