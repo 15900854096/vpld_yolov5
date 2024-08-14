@@ -71,8 +71,8 @@ class Detect(nn.Module):
         for i in range(self.nl):#这里的self.nl==1
             temp = self.m_pre(x)
             output["vpld"][i] = self.m(temp)  # conv
-			if(hpy["task_fs"]):
-	            output["fs"][i] = self.fs(temp)
+            if(hyp["task_fs"]):
+                output["fs"][i] = self.fs(temp)
             
             bs, _, ny, nx = output["vpld"][i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
             output["vpld"][i] = output["vpld"][i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()

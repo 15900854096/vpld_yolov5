@@ -45,9 +45,6 @@ VID_FORMATS = 'asf', 'avi', 'gif', 'm4v', 'mkv', 'mov', 'mp4', 'mpeg', 'mpg', 't
 LOCAL_RANK = int(os.getenv('LOCAL_RANK', -1))  # https://pytorch.org/docs/stable/elastic/run.html
 RANK = int(os.getenv('RANK', -1))
 PIN_MEMORY = str(os.getenv('PIN_MEMORY', True)).lower() == 'true'  # global pin_memory for dataloaders
-
-with open(ROOT / '../data/hyps/hyp.scratch-low.yaml', errors='ignore') as f:
-    hyp = yaml.safe_load(f)
     
 # Get orientation exif tag
 for orientation in ExifTags.TAGS.keys():

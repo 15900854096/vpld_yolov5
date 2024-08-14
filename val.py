@@ -202,12 +202,13 @@ def run(
     tp, fp, p, r, f1, mp, mr, map50, ap50, map95, ap95, map = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     map90, ap90 = 0.0, 0.0
     dt = Profile(), Profile(), Profile()  # profiling times
-    loss = torch.zeros(3, device=device)
+    loss = torch.zeros(4, device=device)  #box_loss obj_loss cls_loss fs_loss
     jdict, stats, ap, ap_class = [], [], [], []
     callbacks.run('on_val_start')
     pbar = tqdm(dataloader, desc=s, bar_format=TQDM_BAR_FORMAT)  # progress bar
-    for batch_i, (im, targets, paths, shapes) in enumerate(pbar):
+    for batch_i, (im, targets, paths, shapes, masks) in enumerate(pbar):
         callbacks.run('on_val_batch_start')
+        masks = masks.to(device, non_blocking=True)
         with dt[0]:
             if cuda:
                 im = im.to(device, non_blocking=True)
@@ -222,7 +223,7 @@ def run(
 
         # Loss
         if compute_loss:
-            loss += compute_loss(train_out, targets)[1]  # box, obj, cls
+            loss += compute_loss(train_out, targets, masks)[1]  # box, obj, cls, fs
 
         # NMS
         #targets: img_id cls x1 y1 x2 y2 x3 y3 x3 x4
@@ -231,7 +232,7 @@ def run(
         with dt[2]:
             #             0  1  2   3    4   5   6    7    8  9  10  11  12  13  14   15   16   17
             #predictions: Ax Ay Ac1 As1 Ac2 As2 Alen Aobj  Bx By Bc1 Bs1 Bc2 Bs2 Blen Bobj cls1 cls2
-            preds = non_max_suppression(preds,
+            preds["vpld"] = non_max_suppression(preds["vpld"],
                                         conf_thres,
                                         iou_thres,
                                         imgsz,
@@ -243,7 +244,7 @@ def run(
             # 0 1  2   3  4  5   6   7   8   9   10
             # x y len c1 s1 ADc ADs BCc BCs conf cls x&y:base_640  others:normal 1
         # Metrics
-        for si, pred in enumerate(preds):
+        for si, pred in enumerate(preds["vpld"]):
             ori_shape = shapes[si][0]
             ipt_shape = shapes[si][1]
             labels = targets[targets[:, 0] == si, 1:][:,:9] #lebels: label x1 y1 x2 y2 x3 y3 x4 y4  all is BatchNorm_1
@@ -347,9 +348,9 @@ def run(
             plot_images(im, targets, paths, save_dir / f'val_batch{batch_i}_labels.jpg', names)  # labels
             #preds: x y len c1 s1 ADc ADs BCc BCs conf cls x&y:base_640  others:normal 1
             #output_to_target(preds,imgsz): img_id cls x1 y1 x2 y2 x3 y3 x3 x4 conf batchnorm_1
-            plot_images(im, output_to_target(preds,imgsz), paths, save_dir / f'val_batch{batch_i}_pred.jpg', names)  # pred
+            plot_images(im, output_to_target(preds["vpld"],imgsz), paths, save_dir / f'val_batch{batch_i}_pred.jpg', names)  # pred
 
-        callbacks.run('on_val_batch_end', batch_i, im, targets, paths, shapes, preds)
+        callbacks.run('on_val_batch_end', batch_i, im, targets, paths, shapes, preds["vpld"])
     print("loss:",(loss.cpu() / len(dataloader)).tolist())
     # Compute metrics
     stats = [torch.cat(x, 0).cpu().numpy() for x in zip(*stats)]  # to numpy
@@ -419,7 +420,7 @@ def run(
     maps = np.zeros(nc) + map
     for i, c in enumerate(ap_class):
         maps[c] = ap[i]
-    return (mp, mr, map50, map95, map, *(loss.cpu() / len(dataloader)).tolist()), maps, t  #loss have three value :box_loss, obj_loss, cls_loss
+    return (mp, mr, map50, map95, map, *(loss.cpu() / len(dataloader)).tolist()), maps, t  #loss have four value : box_loss, obj_loss, cls_loss fs_loss
 
 
 def parse_opt():

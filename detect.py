@@ -35,6 +35,8 @@ import sys
 from pathlib import Path
 import numpy as np
 import torch
+import copy
+import yaml 
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # YOLOv5 root directory
@@ -49,7 +51,9 @@ from utils.general import (LOGGER, Profile, check_file, check_img_size, check_im
 from utils.plots import Annotator, colors, save_one_box
 from utils.torch_utils import select_device, smart_inference_mode
 
-
+with open(ROOT / 'data/hyps/hyp.scratch-low.yaml', errors='ignore') as f:
+    hyp = yaml.safe_load(f)
+    
 @smart_inference_mode()
 def run(
         weights=ROOT / 'yolov5s.pt',  # model path or triton URL
@@ -146,13 +150,13 @@ def run(
             #sys.exit()
         # NMS
         with dt[2]:
-            pred = non_max_suppression(pred, conf_thres, iou_thres, imgsz[0], classes, agnostic_nms, max_det=max_det)
+            pred[0]["vpld"] = non_max_suppression(pred[0]["vpld"], conf_thres, iou_thres, imgsz[0], classes, agnostic_nms, max_det=max_det)
 
         # Second-stage classifier (optional)
         # pred = utils.general.apply_classifier(pred, classifier_model, im, im0s)
-
+        
         # Process predictions
-        for i, det in enumerate(pred):  # per image
+        for i, det in enumerate(pred[0]["vpld"]):  # per image
             # 0 1  2   3  4  5   6   7   8   9   10
             # x y len c1 s1 ADc ADs BCc BCs conf cls x&y:base_640  others:normal 1
             seen += 1
@@ -162,6 +166,20 @@ def run(
             else:
                 p, im0, frame = path, im0s.copy(), getattr(dataset, 'frame', 0)
 
+            if(hyp["task_fs"]):
+                pred[0]["fs"][i] = torch.max(pred[0]["fs"][i],dim=1)
+                mask = pred[0]["fs"][i].indices.cpu() #chw
+                mask = np.array(mask).astype("float")
+                mask = mask.transpose((1, 2, 0)) #chw-hwc
+                pre_color = copy.deepcopy(im0)            
+                mask = cv2.resize(mask, (im0.shape[0], im0.shape[1]))
+                mask = mask.astype("int32")
+                bchanel = 0*(mask==0)
+                gchanel = 255*(mask==0)
+                rchanel = 255*(mask==1)
+                pre_color[:,:,0], pre_color[:,:,1], pre_color[:,:,2]  = bchanel, gchanel, rchanel
+                im0 = cv2.addWeighted(pre_color,0.3,im0,0.7,0)
+            
             p = Path(p)  # to Path
             save_path = str(save_dir / p.name)  # im.jpg
             txt_path = str(save_dir / 'labels' / p.stem) + ('' if dataset.mode == 'image' else f'_{frame}')  # im.txt
