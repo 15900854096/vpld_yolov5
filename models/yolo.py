@@ -66,8 +66,12 @@ class Detect(nn.Module):
         z = {"vpld":[],"fs":[]}  # inference output
         #output=[0]
         output={"vpld":[0],"fs":[0]}
-        if hyp["EXPORT_ONNX"]:
-            return self.m(self.m_pre(x))
+        if self.export:
+            temp = self.m_pre(x)
+            output["vpld"]=self.m(temp)
+            if(hyp["task_fs"]):
+                output["fs"]=self.fs(temp)
+            return output
         for i in range(self.nl):#这里的self.nl==1
             temp = self.m_pre(x)
             output["vpld"][i] = self.m(temp)  # conv

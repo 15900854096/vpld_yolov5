@@ -758,9 +758,10 @@ def run(
         y = model(im)  # dry runs
     if half and not coreml:
         im, model = im.half(), model.half()  # to FP16
-    shape = tuple((y[0] if isinstance(y, tuple) else y).shape)  # model output shape
+    shape_vpld = tuple((y[0]["vpld"] if isinstance(y, tuple) else y["vpld"]).shape)  # model output shape
+    shape_fs = tuple((y[0]["fs"] if isinstance(y, tuple) else y["fs"]).shape)
     metadata = {'stride': int(max(model.stride)), 'names': model.names}  # model metadata
-    LOGGER.info(f"\n{colorstr('PyTorch:')} starting from {file} with output shape {shape} ({file_size(file):.1f} MB)")
+    LOGGER.info(f"\n{colorstr('PyTorch:')} starting from {file} with output shape_vpld {shape_vpld} shape_fs {shape_fs} ({file_size(file):.1f} MB)")
 
     # Exports
     f = [''] * len(fmts)  # exported filenames
