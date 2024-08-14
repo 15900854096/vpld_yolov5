@@ -185,6 +185,7 @@ def run(
                                        batch_size,
                                        stride,
                                        single_cls,
+                                       hyp=hyp,
                                        pad=pad,
                                        rect=rect,
                                        workers=workers,
@@ -196,14 +197,14 @@ def run(
     if isinstance(names, (list, tuple)):  # old format
         names = dict(enumerate(names))
     class_map = coco80_to_coco91_class() if is_coco else list(range(1000))
-    s = ('%22s' + '%11s' * 8) % ('Class', 'Images', 'Instances', 'P', 'R', 'mAP50', 'mAP90', 'mAP95', 'mAP50-95')
+    s = ('%22s' + '%11s' * 8 + '%15s') % ('Class', 'Images', 'Instances', 'P', 'R', 'mAP50', 'mAP90', 'mAP95', 'mAP50-95', 'fs_accuracy')
     if(txtlog!=None):
         txtlog.writelines('\n'+s)
-    tp, fp, p, r, f1, mp, mr, map50, ap50, map95, ap95, map = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+    tp, fp, p, r, f1, mp, mr, map50, ap50, map95, ap95, map, fs_cur_mean = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     map90, ap90 = 0.0, 0.0
     dt = Profile(), Profile(), Profile()  # profiling times
     loss = torch.zeros(4, device=device)  #box_loss obj_loss cls_loss fs_loss
-    jdict, stats, ap, ap_class = [], [], [], []
+    jdict, stats, ap, ap_class ,fs_cur= [], [], [], [], []
     callbacks.run('on_val_start')
     pbar = tqdm(dataloader, desc=s, bar_format=TQDM_BAR_FORMAT)  # progress bar
     for batch_i, (im, targets, paths, shapes, masks) in enumerate(pbar):
@@ -220,7 +221,7 @@ def run(
         # Inference
         with dt[1]:
             preds, train_out = model(im) if compute_loss else (model(im, augment=augment), None)#preds像是原buffer经过激活层, train_out像是原buffer未经过激活层
-
+            preds = preds if compute_loss else preds[0]
         # Loss
         if compute_loss:
             loss += compute_loss(train_out, targets, masks)[1]  # box, obj, cls, fs
@@ -243,8 +244,15 @@ def run(
             
             # 0 1  2   3  4  5   6   7   8   9   10
             # x y len c1 s1 ADc ADs BCc BCs conf cls x&y:base_640  others:normal 1
+            
+            if(hyp["task_fs"]):
+                preds["fs"][0] = torch.max(preds["fs"][0],dim=1)
+                preds["fs"][0] = preds["fs"][0].indices.cpu() 
+                                
         # Metrics
         for si, pred in enumerate(preds["vpld"]):
+            
+            
             ori_shape = shapes[si][0]
             ipt_shape = shapes[si][1]
             labels = targets[targets[:, 0] == si, 1:][:,:9] #lebels: label x1 y1 x2 y2 x3 y3 x4 y4  all is BatchNorm_1
@@ -259,6 +267,13 @@ def run(
                 labels[:,0:1] = 0
                 pred[:, 10] = 0
                 
+            if(hyp["task_fs"]):
+                premask = np.array(preds["fs"][0])[si]
+                gtmask = np.array(masks[si].cpu())[0]# torch chw -> np chw -> np hw
+                fs_cur.append(np.sum(premask==gtmask)/(gtmask.shape[0]*gtmask.shape[1]))
+            else:
+                fs_cur.append(1.0)
+                   
             if npr == 0:
                 if nl:
                     stats.append((correct, *torch.zeros((2, 0), device=device), labels[:, 0])) # (correct, conf, pcls, tcls)
@@ -351,7 +366,8 @@ def run(
             plot_images(im, output_to_target(preds["vpld"],imgsz), paths, save_dir / f'val_batch{batch_i}_pred.jpg', names)  # pred
 
         callbacks.run('on_val_batch_end', batch_i, im, targets, paths, shapes, preds["vpld"])
-    print("loss:",(loss.cpu() / len(dataloader)).tolist())
+    fs_cur_mean = sum(fs_cur)/len(fs_cur)
+    print("loss: ", (loss.cpu() / len(dataloader)).tolist()," fs accuracy: ", fs_cur_mean)
     # Compute metrics
     stats = [torch.cat(x, 0).cpu().numpy() for x in zip(*stats)]  # to numpy
     if len(stats) and stats[0].any():
@@ -361,19 +377,19 @@ def run(
     nt = np.bincount(stats[3].astype(int), minlength=nc)  # number of targets per class
 
     # Print results
-    pf = '%22s' + '%11i' * 2 + '%11.3g' * 6  # print format
-    LOGGER.info(pf % ('all', seen, nt.sum(), mp, mr, map50, map90, map95, map))
+    pf = '%22s' + '%11i' * 2 + '%11.3g' * 7  # print format
+    LOGGER.info(pf % ('all', seen, nt.sum(), mp, mr, map50, map90, map95, map, fs_cur_mean))
     if(txtlog!=None):
-        txtlog.writelines('\n' + pf % ('all', seen, nt.sum(), mp, mr, map50, map90, map95, map))
+        txtlog.writelines('\n' + pf % ('all', seen, nt.sum(), mp, mr, map50, map90, map95, map, fs_cur_mean))
     if nt.sum() == 0:
         LOGGER.warning(f'WARNING ⚠️ no labels found in {task} set, can not compute metrics without labels')
 
     # Print results per class
     if (verbose or (nc < 50 and not training)) and nc > 1 and len(stats):
         for i, c in enumerate(ap_class):
-            LOGGER.info(pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap90[i], ap95[i], ap[i]))
+            LOGGER.info(pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap90[i], ap95[i], ap[i], fs_cur_mean))
             if(txtlog!=None):
-                txtlog.writelines('\n' + pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap90[i], ap95[i], ap[i]))
+                txtlog.writelines('\n' + pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap90[i], ap95[i], ap[i],fs_cur_mean))
 
     # Print speeds
     t = tuple(x.t / seen * 1E3 for x in dt)  # speeds per image
@@ -420,7 +436,7 @@ def run(
     maps = np.zeros(nc) + map
     for i, c in enumerate(ap_class):
         maps[c] = ap[i]
-    return (mp, mr, map50, map95, map, *(loss.cpu() / len(dataloader)).tolist()), maps, t  #loss have four value : box_loss, obj_loss, cls_loss fs_loss
+    return (mp, mr, map50, map95, map, fs_cur_mean, *(loss.cpu() / len(dataloader)).tolist()), maps, t  #loss have four value : box_loss, obj_loss, cls_loss fs_loss
 
 
 def parse_opt():

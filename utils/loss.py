@@ -151,7 +151,7 @@ class ComputeLoss:
         if hyp["task_fs"]:
             fs_gt = self.build_fs_targets(masks)
             lfs += self.MSEfs(p["fs"][0], fs_gt)/1000 #self.BCEcls(pcls, t)  # BCE
-            vpld_weight=10
+            vpld_weight = 10
             
         random.seed(time.time_ns()%(2**32 - 1))
         # Losses
@@ -261,9 +261,9 @@ class ComputeLoss:
 
         if self.autobalance:
             self.balance = [x / self.balance[self.ssi] for x in self.balance]
-        lbox *= self.hyp['box']*vpld_weight
-        lobj *= self.hyp['obj']*vpld_weight
-        lcls *= self.hyp['cls']*vpld_weight
+        lbox *= self.hyp['box'] * vpld_weight
+        lobj *= self.hyp['obj'] * vpld_weight
+        lcls *= self.hyp['cls'] * vpld_weight
         bs = Atobj.shape[0]+Btobj.shape[0]  # batch size
 
         return (lbox + lobj + lcls) * bs+lfs, torch.cat((lbox, lobj, lcls, lfs)).detach()

@@ -676,7 +676,7 @@ class LoadImagesAndLabels(Dataset):
         else:
             # Load image
             img, (h0, w0), (h, w) = self.load_image(index)
-            if (hpy["task_fs"]):
+            if (self.hyp["task_fs"]):
                 mask, _, _ = self.load_mask(index)
             else:
                 mask = np.zeros((h, w))
