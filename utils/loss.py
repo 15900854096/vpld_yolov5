@@ -147,11 +147,11 @@ class ComputeLoss:
         #tcls, tbox, indices, anchors = self.build_targets(p, targets)  # targets
         tcls, Atbox, Aindices, Btbox, Bindices, anchors = self.build_targets(p["vpld"], targets)
         
-        vpld_weight=1
+        vpld_weight = hyp["vpld_weight"]
+        fs_weight = hyp["fs_weight"]
         if hyp["task_fs"]:
             fs_gt = self.build_fs_targets(masks)
-            lfs += self.MSEfs(p["fs"][0], fs_gt)/1000 #self.BCEcls(pcls, t)  # BCE
-            vpld_weight = 10
+            lfs += self.MSEfs(p["fs"][0], fs_gt) * fs_weight #self.BCEcls(pcls, t)  # BCE
             
         random.seed(time.time_ns()%(2**32 - 1))
         # Losses
