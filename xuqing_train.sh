@@ -1,11 +1,11 @@
 python train.py  \
---weights xuqing/yolov5s.pt  \
+--weights ./runs/train/exp84/weights/last.pt \
 --cfg ./xuqing/yolov5s_xuqing.yaml  \
 --data ./xuqing/VOC_xuqing.yaml  \
 --device 0,1,2,3 \
 --imgsz 640 \
 --rect \
---epoch 1000 \
+--epoch 3000 \
 --batch-size 40 \
 --label-smoothing 0.2 \
 --noautoanchor \

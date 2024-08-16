@@ -47,7 +47,7 @@ AddPepperSaltNoise: 0
 
 task_fs: 1 #代表是否有多任务中的fs
 vpld_weight: 0
-fs_weight: 0.01
+fs_weight: 2
 fs_num_class: 2
 
 CAREABOUT_LOT_TYPE: 0 #是否需要不关注库位类型，来测试库位的mAP
