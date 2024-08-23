@@ -2,15 +2,19 @@ python train.py  \
 --weights xuqing/yolov5s.pt  \
 --cfg ./xuqing/yolov5s_xuqing.yaml  \
 --data ./xuqing/VOC_xuqing.yaml  \
---device 5,6,7 \
+--device 0,1,2,3 \
 --imgsz 640 \
 --rect \
 --epoch 900 \
---batch-size 150 \
+--batch-size 192 \
 --label-smoothing 0.2 \
 --noautoanchor \
---sync-bn \
---patience 0
+--patience 0 \
+--cache disk \
+--workers 4 \
+--sync-bn
+
+#--resume \
 #python train.py  --weights xuqing/yolov5s.pt  --cfg ./xuqing/yolov5s_xuqing.yaml  --data ./xuqing/VOC_xuqing.yaml  --device 0,1,2,3,4,5,6,7 --imgsz 640 --rect --epoch 900 --batch-size 400 --label-smoothing 0.2 --noautoanchor --sync-bn
 
 #--sync-bn parkinh use it,searching not use it
