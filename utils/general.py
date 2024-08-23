@@ -984,10 +984,10 @@ def non_max_suppression(
                 point0_dest=( point0[0]+Alen*Ap[4], point0[1]+Alen*Ap[5]) 
                 point1_dest=( point1[0]+Blen*Bp[12], point1[1]+Blen*Bp[13]) 
 
-                Ac1 = Ap[2]
-                As1 = Ap[3]
-                Bc1 = Bp[10]
-                Bs1 = Bp[11]
+                Ac1 = Ap[2]/math.sqrt(Ap[2]*Ap[2]+Ap[3]*Ap[3])
+                As1 = Ap[3]/math.sqrt(Ap[2]*Ap[2]+Ap[3]*Ap[3])
+                Bc1 = Bp[10]/math.sqrt(Bp[10]*Bp[10]+Bp[11]*Bp[11])
+                Bs1 = Bp[11]/math.sqrt(Bp[10]*Bp[10]+Bp[11]*Bp[11])
                 if(math.sqrt(Ac1*Ac1+As1*As1)==0 or math.sqrt(Bc1*Bc1+Bs1*Bs1)==0):
                     continue
     
@@ -1004,7 +1004,8 @@ def non_max_suppression(
                     adangle = math.atan2(Ap[3],  Ap[2])
                     tm = math.atan2((Bp[11]+Ap[3])/2, (Bp[10]+Ap[2])/2)
                     #npy = list([point0[0], point0[1], abdis, math.cos(abangle), math.sin(abangle), math.cos(tm), math.sin(tm), mean_conf]) + cls
-                    npy = list([point0[0], point0[1], abdis, math.cos(abangle), math.sin(abangle), Ap[2], Ap[3], Bp[10], Bp[11], mean_conf]) + cls
+                    npy = list([point0[0], point0[1], abdis, math.cos(abangle), math.sin(abangle), Ac1, As1, Bc1, Bs1, mean_conf]) + cls
+                    #npy = list([point0[0], point0[1], abdis, math.cos(abangle), math.sin(abangle), Ap[2], Ap[3], Bp[10], Bp[11], mean_conf]) + cls
                     npy = np.array(npy)
                     npy=torch.tensor(npy).to(prediction.device)
                     temp.append(npy)
