@@ -42,7 +42,7 @@ from utils.dataloaders import create_dataloader
 from utils.general import (LOGGER, TQDM_BAR_FORMAT, Profile, check_dataset, check_img_size, check_requirements,
                            check_yaml, coco80_to_coco91_class, colorstr, increment_path, non_max_suppression,
                            print_args, scale_boxes, xywh2xyxy, xyxy2xywh, default_vlot_depth, default_hlot_depth, default_hlot_min_width)
-from utils.metrics import ConfusionMatrix, ap_per_class, box_iou, box_iou_poly
+from utils.metrics import ConfusionMatrix, ap_per_class, box_iou, box_iou_poly, StreamSegMetrics
 from utils.plots import output_to_target, plot_images, plot_val_study
 from utils.torch_utils import select_device, smart_inference_mode
 
@@ -207,6 +207,8 @@ def run(
     jdict, stats, ap, ap_class ,fs_cur= [], [], [], [], []
     callbacks.run('on_val_start')
     pbar = tqdm(dataloader, desc=s, bar_format=TQDM_BAR_FORMAT)  # progress bar
+    fs_cal = StreamSegMetrics(hyp["fs_num_class"])
+    fs_cal.reset()
     for batch_i, (im, targets, paths, shapes, masks) in enumerate(pbar):
         callbacks.run('on_val_batch_start')
         masks = masks.to(device, non_blocking=True)
@@ -270,6 +272,10 @@ def run(
             if(hyp["task_fs"]):
                 premask = np.array(preds["fs"][0])[si]
                 gtmask = np.array(masks[si].cpu())[0]# torch chw -> np chw -> np hw
+                # print("np.array(masks[si].cpu()): " , np.array(masks[si].cpu()).shape)
+                # print("premask: " , premask[np.newaxis, :, :].shape)
+                # sys.exit()
+                fs_cal.update(np.array(masks[si].cpu()),premask[np.newaxis, :, :])
                 fs_cur.append(np.sum(premask==gtmask)/(gtmask.shape[0]*gtmask.shape[1]))
             else:
                 fs_cur.append(1.0)
@@ -368,6 +374,7 @@ def run(
         callbacks.run('on_val_batch_end', batch_i, im, targets, paths, shapes, preds["vpld"])
     fs_cur_mean = sum(fs_cur)/len(fs_cur)
     print("loss: ", (loss.cpu() / len(dataloader)).tolist()," fs accuracy: ", fs_cur_mean)
+    print("!!!!!!!!!!!!!!!!!",fs_cal.to_str(fs_cal.get_results()))
     # Compute metrics
     stats = [torch.cat(x, 0).cpu().numpy() for x in zip(*stats)]  # to numpy
     if len(stats) and stats[0].any():

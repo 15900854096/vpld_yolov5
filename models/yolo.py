@@ -80,7 +80,7 @@ class Detect(nn.Module):
             
             bs, _, ny, nx = output["vpld"][i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
             output["vpld"][i] = output["vpld"][i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
-            output["vpld"][i] = torch.zeros_like(output["vpld"][i])
+            output["vpld"][i] = output["vpld"][i]
             if not self.training:  # inference
                 if self.dynamic or self.grid[i].shape[2:4] != output["vpld"][i].shape[2:4]:
                     self.grid[i], self.anchor_grid[i] = self._make_grid(nx, ny, i)
@@ -114,7 +114,7 @@ class Detect(nn.Module):
                         class12[:,:,:,:,1] = 0
                     y = torch.cat((Axy, Ac1s1c2s2, Alen, Aobj, Bxy, Bc1s1c2s2, Blen, Bobj, class12), 4)
                 #z["vpld"].append(y.view(bs, self.na * nx * ny, self.no)) #nhwc
-                z["vpld"].append(torch.zeros_like(y.view(bs, self.na * nx * ny, self.no))) #nhwc
+                z["vpld"].append(y.view(bs, self.na * nx * ny, self.no)) #nhwc
                 z["fs"].append(output["fs"][i]) #nhwc
         return output if self.training else z if self.export else (z, output)
         #return output if self.training else (torch.cat(z, 1),) if self.export else (torch.cat(z, 1), output)
