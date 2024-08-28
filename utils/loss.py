@@ -5,6 +5,7 @@ Loss functions
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import sys
 import time
 import yaml
@@ -44,7 +45,25 @@ class BCEBlurWithLogitsLoss(nn.Module):
         loss *= alpha_factor
         return loss.mean()
 
+class FocalLossDeeplabv3plus(nn.Module):
+    def __init__(self, alpha=1, gamma=0, size_average=True, ignore_index=255):
+        super(FocalLossDeeplabv3plus, self).__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+        self.ignore_index = ignore_index
+        self.size_average = size_average
 
+    def forward(self, inputs, targets):
+        targets = torch.squeeze(targets).long()
+        ce_loss = F.cross_entropy(
+            inputs, targets, reduction='none', ignore_index=self.ignore_index)
+        pt = torch.exp(-ce_loss)
+        focal_loss = self.alpha * (1-pt)**self.gamma * ce_loss
+        if self.size_average:
+            return focal_loss.mean()
+        else:
+            return focal_loss.sum()
+        
 class FocalLoss(nn.Module):
     # Wraps focal loss around existing loss_fcn(), i.e. criteria = FocalLoss(nn.BCEWithLogitsLoss(), gamma=1.5)
     def __init__(self, loss_fcn, gamma=1.5, alpha=0.25):
@@ -129,7 +148,7 @@ class ComputeLoss:
         self.balance = {3: [1.0, 1.0, 1.0]}.get(m.nl, [1.0, 1.0, 1.0, 1.0, 1.0])  # P3-P7
         self.ssi = list(m.stride).index(16) if autobalance else 0  # stride 16 index
         self.MSEwh, self.BCEcls, self.BCEobj, self.gr, self.hyp, self.autobalance = MSEwh, BCEcls, BCEobj, 1.0, h, autobalance
-        self.fslossF =nn.MSELoss(reduction='sum') # MultiClassDiceLoss() #nn.MSELoss(reduction='sum')
+        self.fslossF = FocalLossDeeplabv3plus(ignore_index=255, size_average=True) #nn.MSELoss(reduction='sum') # MultiClassDiceLoss() #nn.MSELoss(reduction='sum')
         self.MSEobj = MSEobj
         self.MSEthetaAD = MSEthetaAD
         self.na = m.na  # number of anchors
@@ -151,8 +170,8 @@ class ComputeLoss:
         fs_weight = hyp["fs_weight"]
         if hyp["task_fs"]:
             fs_gt = self.build_fs_targets(masks)
-            lfs += self.fslossF(p["fs"][0], fs_gt) * fs_weight #self.BCEcls(pcls, t)  # BCE
-            #lfs += self.fslossF(p["fs"][0], fs_gt) * fs_weight
+            #lfs += self.fslossF(p["fs"][0], fs_gt) * fs_weight #self.BCEcls(pcls, t)  # BCE
+            lfs += self.fslossF(p["fs"][0], masks) * fs_weight
             
         random.seed(time.time_ns()%(2**32 - 1))
         # Losses

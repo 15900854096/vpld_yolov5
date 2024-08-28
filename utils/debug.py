@@ -2,7 +2,8 @@ import cv2
 import cv2 as cv
 import numpy as np
 import sys
-
+import copy
+import torch
 
 point_color = (0, 255, 0)  # BGR
 thickness = 1
@@ -32,8 +33,25 @@ def batch_draw_save(imgs,labelses):
         img = img.transpose((1, 2, 0))
         idx = labelses[:,0] == i
         labels = labelses[idx]
-        draw_save(img,labels[:,1:],r"/home/xuqing/tools/yolov5_ori/xuqing/flipud/%06d.jpg"%cnt)
+        draw_save(img,labels[:,1:],r"./xuqing/flipud/%06d.jpg"%cnt)
         cnt+=1
         if(cnt>1000):
             sys.exit()
-        
+            
+def batch_draw_mask_save(imgs, masks):
+    imgs = np.array(imgs) #nchw grb
+    masks = np.array(masks) #n1hw
+    global cnt
+    for img,mask in zip(imgs,masks):
+        mask = torch.squeeze(torch.from_numpy(mask)).long()
+        img = img.transpose((1, 2, 0))[:,:,::-1] #chw rgb-> hwc rgb ->hwc bgr
+        pre_color = copy.deepcopy(img) #hwc bgr
+        bchanel = 0*(mask==0)
+        gchanel = 255*(mask==0)
+        rchanel = 255*(mask==1)
+        pre_color[:,:,0], pre_color[:,:,1], pre_color[:,:,2]  = bchanel, gchanel, rchanel
+        xuanran_img = cv2.addWeighted(pre_color,0.3,img,0.7,0)
+        cv2.imwrite(r"./xuqing/flipud/z_%06d.jpg"%cnt,xuanran_img)
+        cnt+=1
+        if(cnt>110):
+            sys.exit()                  

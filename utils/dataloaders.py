@@ -27,6 +27,8 @@ import yaml
 from PIL import ExifTags, Image, ImageOps
 from torch.utils.data import DataLoader, Dataset, dataloader, distributed
 from tqdm import tqdm
+import copy
+import re
 
 from utils.augmentations import (Albumentations, augment_hsv, classify_albumentations, classify_transforms, copy_paste,
                                  letterbox, mixup, random_perspective, rain, sunlight, AddGaussianNoise, AddPepperSaltNoise)
@@ -484,6 +486,9 @@ class LoadImagesAndLabels(Dataset):
                 else:
                     raise FileNotFoundError(f'{prefix}{p} does not exist')
             self.im_files = sorted(x.replace('/', os.sep) for x in f if x.split('.')[-1].lower() in IMG_FORMATS)
+            old_len = len(self.im_files)
+            self.im_files=list(filter(lambda pt:(re.search("images",pt) is not None) ,self.im_files))
+            print("######## drop out %d images"%(old_len - len(self.im_files)))
             # self.img_files = sorted([x for x in f if x.suffix[1:].lower() in IMG_FORMATS])  # pathlib
             assert self.im_files, f'{prefix}No images found'
         except Exception as e:
@@ -492,11 +497,12 @@ class LoadImagesAndLabels(Dataset):
         # Check cache
         self.mask_files = img2mask_paths(self.im_files)  # labels
         self.label_files = img2label_paths(self.im_files)  # labels
+           
         cache_path = (p if p.is_file() else Path(self.label_files[0]).parent).with_suffix('.cache')
         try:
             cache, exists = np.load(cache_path, allow_pickle=True).item(), True  # load dict
             assert cache['version'] == self.cache_version  # matches current version
-            assert cache['hash'] == get_hash(self.label_files + self.im_files)  # identical hash
+            assert cache['hash'] == get_hash(self.label_files + self.im_files + self.mask_files)  # identical hash
         except Exception:
             cache, exists = self.cache_labels(cache_path, prefix), False  # run cache ops
 
@@ -518,13 +524,15 @@ class LoadImagesAndLabels(Dataset):
         self.shapes = np.array(shapes)
         self.im_files = list(cache.keys())  # update
         self.label_files = img2label_paths(cache.keys())  # update
-
+        self.mask_files = img2mask_paths(cache.keys())
+        
         # Filter images
-        if min_items:
+        if min_items:#如果目标数量小于min_items，则对应的图像&GT数据会被丢弃，一般都不打开此过滤选项
             include = np.array([len(x) >= min_items for x in self.labels]).nonzero()[0].astype(int)
             LOGGER.info(f'{prefix}{n - len(include)}/{n} images filtered from dataset')
             self.im_files = [self.im_files[i] for i in include]
             self.label_files = [self.label_files[i] for i in include]
+            self.mask_files = [self.mask_files[i] for i in include]
             self.labels = [self.labels[i] for i in include]
             self.segments = [self.segments[i] for i in include]
             self.shapes = self.shapes[include]  # wh
@@ -557,6 +565,7 @@ class LoadImagesAndLabels(Dataset):
             ar = s[:, 1] / s[:, 0]  # aspect ratio
             irect = ar.argsort()
             self.im_files = [self.im_files[i] for i in irect]
+            self.mask_files = [self.mask_files[i] for i in irect]
             self.label_files = [self.label_files[i] for i in irect]
             self.labels = [self.labels[i] for i in irect]
             self.segments = [self.segments[i] for i in irect]
@@ -593,7 +602,7 @@ class LoadImagesAndLabels(Dataset):
                     self.ims[i], self.im_hw0[i], self.im_hw[i] = x  # im, hw_orig, hw_resized = load_image(self, i)
                     b += self.ims[i].nbytes
                 pbar.desc = f'{prefix}Caching images ({b / gb:.1f}GB {cache_images})'
-            pbar.close()
+            pbar.close()  
 
     def check_cache_ram(self, safety_margin=0.1, prefix=''):
         # Check image caching requirements vs available memory
@@ -612,6 +621,7 @@ class LoadImagesAndLabels(Dataset):
                         f"{'caching images ✅' if cache else 'not caching images ⚠️'}")
         return cache
 
+    #return dict:  x[file1], x[file2], ..., x[fileN], x['hash'], x['results'], x['msgs'], x['version']
     def cache_labels(self, path=Path('./labels.cache'), prefix=''):
         # Cache dataset labels, check images and read shapes
         x = {}  # dict
@@ -638,7 +648,7 @@ class LoadImagesAndLabels(Dataset):
             LOGGER.info('\n'.join(msgs))
         if nf == 0:
             LOGGER.warning(f'{prefix}WARNING ⚠️ No labels found in {path}. {HELP_URL}')
-        x['hash'] = get_hash(self.label_files + self.im_files)
+        x['hash'] = get_hash(self.label_files + self.im_files + self.mask_files)
         x['results'] = nf, nm, ne, nc, len(self.im_files)
         x['msgs'] = msgs  # warnings
         x['version'] = self.cache_version  # cache version
@@ -680,6 +690,7 @@ class LoadImagesAndLabels(Dataset):
                 mask, _, _ = self.load_mask(index)
             else:
                 mask = np.zeros((h, w))
+        
             # Letterbox
             shape = self.batch_shapes[self.batch[index]] if self.rect else self.img_size  # final letterboxed shape
             img, ratio, pad = letterbox(img, shape, auto=False, scaleup=self.augment)
@@ -737,7 +748,7 @@ class LoadImagesAndLabels(Dataset):
         #     sys.exit()
             
         nl = len(labels)  # number of labels                   
-        
+            
         #if nl:
         #    labels[:, 1:5] = xyxy2xywhn(labels[:, 1:5], w=img.shape[1], h=img.shape[0], clip=True, eps=1E-3)
         if self.augment:
@@ -802,9 +813,9 @@ class LoadImagesAndLabels(Dataset):
         img = img.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
         img = np.ascontiguousarray(img)
 
-        
         mask = mask[np.newaxis, :, :]  #(h,w)->(1,h,w)  mask chanel must equal 1
         mask = np.ascontiguousarray(mask)
+        
         return torch.from_numpy(img), labels_out, self.im_files[index], shapes, torch.from_numpy(mask)
 
     def load_image(self, i):

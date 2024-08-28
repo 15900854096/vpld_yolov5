@@ -22,6 +22,7 @@ import pandas as pd
 import requests
 import torch
 import torch.nn as nn
+from torch.nn import functional as F
 from PIL import Image
 from torch.cuda import amp
 
@@ -112,9 +113,9 @@ class FreeSpaceConv(nn.Module):#16倍下采样到原图
     def __init__(self, inch, outch):
         super().__init__()
         
-        midch = 256
-        halfmidch=256 #(int)(midch/2)
-        squmidch=256 #(int)(midch/4)
+        midch = 16
+        halfmidch=16 #(int)(midch/2)
+        squmidch=16 #(int)(midch/4)
         self.conv16to8 = nn.ConvTranspose2d(inch,midch,kernel_size = 2, stride = 2,padding = 0) #DWConv(c2, c3)
         self.bn16to8 = nn.BatchNorm2d(midch)
         self.act16to8 = nn.ReLU()
@@ -135,30 +136,34 @@ class FreeSpaceConv(nn.Module):#16倍下采样到原图
         self.a2 = nn.ReLU()
         self.backbone2 = nn.Sequential(*(self.c2,self.b2,self.a2))
         
-        self.conv4to2 = nn.ConvTranspose2d(halfmidch,squmidch,kernel_size = 2, stride = 2,padding = 0) #DWConv(c2, c3)
-        self.bn4to2 = nn.BatchNorm2d(squmidch)
-        self.act4to2 = nn.ReLU()
-        self.backbone4to2 = nn.Sequential(*(self.conv4to2,self.bn4to2,self.act4to2))
+        # self.conv4to2 = nn.ConvTranspose2d(halfmidch,squmidch,kernel_size = 2, stride = 2,padding = 0) #DWConv(c2, c3)
+        # self.bn4to2 = nn.BatchNorm2d(squmidch)
+        # self.act4to2 = nn.ReLU()
+        # self.backbone4to2 = nn.Sequential(*(self.conv4to2,self.bn4to2,self.act4to2))
         
         self.c3 = nn.Conv2d(squmidch, squmidch, 3, 1, 1, groups=1, dilation=1, bias=True)
         self.b3 = nn.BatchNorm2d(squmidch)
         self.a3 = nn.ReLU()
         self.backbone3 = nn.Sequential(*(self.c3,self.b3,self.a3))
         
-        self.conv2to1 = nn.ConvTranspose2d(squmidch,outch,kernel_size = 2, stride = 2,padding = 0) #DWConv(c2, c3)
-        self.act2to1 = nn.Sigmoid()
-        #self.act2to1 = nn.Softmax(dim=1)
-        self.backbone2to1 = nn.Sequential(*(self.conv2to1,self.act2to1))
+        self.classifier = nn.Sequential(
+            nn.Upsample(scale_factor=4, mode='nearest'),
+            nn.Conv2d(squmidch, squmidch, 3, padding=1, bias=False),
+            nn.BatchNorm2d(squmidch),
+            nn.ReLU(),
+            nn.Conv2d(squmidch, outch, 1),
+            nn.Sigmoid()
+        )
         
     def forward(self, x):
         x = self.backbone16to8(x)
         x = self.backbone1(x)
         x = self.backbone8to4(x)
         x = self.backbone2(x)
-        x = self.backbone4to2(x)
         x = self.backbone3(x)
-        x = self.backbone2to1(x)
-        return x        
+        #x = F.interpolate(x, size=[640,640], mode='bilinear', align_corners=False)
+        x = self.classifier(x)
+        return x
 
 class DecoupConv(nn.Module):
     def __init__(self, c1, c2, clsnum, archornum, k=3, s=1):
