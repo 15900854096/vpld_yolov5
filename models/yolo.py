@@ -24,6 +24,7 @@ if platform.system() != 'Windows':
 
 from models.common import *
 from models.experimental import *
+from models.deeplabv3plus import *
 from utils.autoanchor import check_anchor_order
 from utils.general import LOGGER, check_version, check_yaml, make_divisible, print_args
 from utils.plots import feature_visualization
@@ -55,10 +56,11 @@ class Detect(nn.Module):
         self.anchor_grid = [torch.empty(0) for _ in range(self.nl)]  # init anchor grid
         self.register_buffer('anchors', torch.tensor(anchors).float().view(self.nl, -1, 1)) #view(self.nl, -1, 2)  # shape(nl,na,2)
         #self.m = nn.ModuleList(nn.Conv2d(x, self.no * self.na, 1) for x in ch)  # output conv
-
-        self.m_pre = MergeDiffSizeBufferConv(ch)
-        self.m    = DecoupConv(ch[-2], self.no, self.nc , self.na, 3)
+        print("@@@@@@@@@@@@@@@@@@@@@:", ch)
+        self.m_merge_diff_size_buffer_conv = MergeDiffSizeBufferConv(ch[1:])
+        self.m_vpld_decoup_conv    = DecoupConv(ch[-2], self.no, self.nc , self.na, 3)
         self.fs = FreeSpaceConv(ch[-2], hyp["fs_num_class"])
+        self.deeplabheadv3plus = DeepLabHeadV3Plus(in_channels=ch[-2], low_level_channels=ch[1], num_classes = hyp["fs_num_class"])
         
         self.inplace = inplace  # use inplace ops (e.g. slice assignment)
 
@@ -67,16 +69,22 @@ class Detect(nn.Module):
         #output=[0]
         output={"vpld":[0],"fs":[0]}
         if self.export:
-            temp = self.m_pre(x)
-            output["vpld"]=self.m(temp)
+            temp = self.m_merge_diff_size_buffer_conv(x[1:])
+            output["vpld"]=self.m_vpld_decoup_conv(temp)
             if(hyp["task_fs"]):
-                output["fs"]=self.fs(temp)
+                feature={}
+                feature['low_level']=x[0]
+                feature['out'] = temp
+                output["fs"]=self.deeplabheadv3plus(feature)  #self.fs(temp)
             return output
         for i in range(self.nl):#这里的self.nl==1
-            temp = self.m_pre(x)
-            output["vpld"][i] = self.m(temp)  # conv
+            temp = self.m_merge_diff_size_buffer_conv(x[1:])
+            output["vpld"][i] = self.m_vpld_decoup_conv(temp)  # conv
             if(hyp["task_fs"]):
-                output["fs"][i] = self.fs(temp)
+                feature={}
+                feature['low_level']=x[0]
+                feature['out'] = temp
+                output["fs"][i]=self.deeplabheadv3plus(feature)  #self.fs(temp)
             
             bs, _, ny, nx = output["vpld"][i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
             output["vpld"][i] = output["vpld"][i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
@@ -237,10 +245,10 @@ class DetectionModel(BaseModel):
         # Build strides, anchors
         m = self.model[-1]  # Detect()
         if isinstance(m, (Detect, Segment)):
-            s = 256  # 2x min stride
+            s = 640  # 2x min stride
             m.inplace = self.inplace
             forward = lambda x: self.forward(x)[0] if isinstance(m, Segment) else self.forward(x)
-            m.stride = torch.tensor([s / x.shape[-2] for x in forward(torch.zeros(1, ch, s, s))["vpld"]])  # forward
+            m.stride = torch.tensor([s / x.shape[-2] for x in forward(torch.zeros(10, ch, s, s))["vpld"]])  # forward
             check_anchor_order(m)
             #m.anchors /= m.stride.view(-1, 1, 1)
             self.stride = m.stride

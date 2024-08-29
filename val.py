@@ -248,8 +248,7 @@ def run(
             # x y len c1 s1 ADc ADs BCc BCs conf cls x&y:base_640  others:normal 1
             
             if(hyp["task_fs"]):
-                preds["fs"][0] = torch.max(preds["fs"][0],dim=1)
-                preds["fs"][0] = preds["fs"][0].indices.cpu() 
+                preds["fs"][0] = torch.max(preds["fs"][0],dim=1).indices.cpu()  #NCHW float--->NHW index， max不仅会求出dim维度的那个最大值，而且还会消除dim这个维度
                                 
         # Metrics
         for si, pred in enumerate(preds["vpld"]):
@@ -271,7 +270,7 @@ def run(
                 
             if(hyp["task_fs"]):
                 premask = np.array(preds["fs"][0])[si]
-                gtmask = np.array(masks[si].cpu())[0]# torch chw -> np chw -> np hw
+                gtmask = np.array(masks[si].cpu())[0]# torch 1hw -> np 1hw -> np hw
                 # print("np.array(masks[si].cpu()): " , np.array(masks[si].cpu()).shape)
                 # print("premask: " , premask[np.newaxis, :, :].shape)
                 # sys.exit()
@@ -373,8 +372,7 @@ def run(
 
         callbacks.run('on_val_batch_end', batch_i, im, targets, paths, shapes, preds["vpld"])
     fs_cur_mean = sum(fs_cur)/len(fs_cur)
-    print("loss: ", (loss.cpu() / len(dataloader)).tolist()," fs accuracy: ", fs_cur_mean)
-    print("!!!!!!!!!!!!!!!!!",fs_cal.to_str(fs_cal.get_results()))
+    
     # Compute metrics
     stats = [torch.cat(x, 0).cpu().numpy() for x in zip(*stats)]  # to numpy
     if len(stats) and stats[0].any():
@@ -435,6 +433,9 @@ def run(
         except Exception as e:
             LOGGER.info(f'pycocotools unable to run: {e}')
 
+    print("loss: ", (loss.cpu() / len(dataloader)).tolist()," fs accuracy: ", fs_cur_mean)
+    print("!!!!!!!!!!!!!!!!!",fs_cal.to_str(fs_cal.get_results()))
+    
     # Return results
     model.float()  # for training
     if not training:

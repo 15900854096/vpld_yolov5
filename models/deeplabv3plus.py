@@ -7,6 +7,9 @@ from copy import deepcopy
 from pathlib import Path
 import yaml
 
+import torch
+import torch.nn as nn
+
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[1]  # YOLOv5 root directory
 if str(ROOT) not in sys.path:
@@ -31,8 +34,9 @@ with open(ROOT / 'data/hyps/hyp.scratch-low.yaml', errors='ignore') as f:
     hyp = yaml.safe_load(f)
     
 class DeepLabHeadV3Plus(nn.Module):
-    def __init__(self, in_channels, low_level_channels, num_classes=2, aspp_dilate=[12, 24, 36]):
+    def __init__(self, in_channels, low_level_channels, imgsize=640, num_classes=2, aspp_dilate=[12, 24, 36]):
         super(DeepLabHeadV3Plus, self).__init__()
+        self.imgsize = imgsize
         self.project = nn.Sequential( 
             nn.Conv2d(low_level_channels, 48, 1, bias=False),
             nn.BatchNorm2d(48),
@@ -40,20 +44,23 @@ class DeepLabHeadV3Plus(nn.Module):
         )
 
         self.aspp = ASPP(in_channels, aspp_dilate)
-
+        self.upsample4 = nn.Upsample(scale_factor=2, mode='nearest')
         self.classifier = nn.Sequential(
             nn.Conv2d(304, 256, 3, padding=1, bias=False),
             nn.BatchNorm2d(256),
             nn.ReLU(inplace=True),
-            nn.Conv2d(256, num_classes, 1)
+            nn.Conv2d(256, num_classes, 1),
         )
         self._init_weight()
 
     def forward(self, feature):
         low_level_feature = self.project( feature['low_level'] )
         output_feature = self.aspp(feature['out'])
+        torch.use_deterministic_algorithms(False)
         output_feature = F.interpolate(output_feature, size=low_level_feature.shape[2:], mode='bilinear', align_corners=False)
-        return self.classifier( torch.cat( [ low_level_feature, output_feature ], dim=1 ) )
+        res = self.classifier( torch.cat( [ low_level_feature, output_feature ], dim=1 ) )
+        res = F.interpolate(res, size=[self.imgsize, self.imgsize], mode='bilinear', align_corners=False)
+        return res
     
     def _init_weight(self):
         for m in self.modules():
@@ -84,6 +91,7 @@ class ASPPPooling(nn.Sequential):
     def forward(self, x):
         size = x.shape[-2:]
         x = super(ASPPPooling, self).forward(x)
+        torch.use_deterministic_algorithms(False)
         return F.interpolate(x, size=size, mode='bilinear', align_corners=False)
 
 class ASPP(nn.Module):

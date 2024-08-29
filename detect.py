@@ -149,14 +149,15 @@ def run(
             #                     fo.write("\n")
             #sys.exit()
         # NMS
-        with dt[2]:
+        with dt[2]: #pred[0]["vpld"] type is list
             pred[0]["vpld"] = non_max_suppression(pred[0]["vpld"], conf_thres, iou_thres, imgsz[0], classes, agnostic_nms, max_det=max_det)
-
+            if(hyp["task_fs"]):
+                pred[0]["fs"][0] = torch.max(pred[0]["fs"][0],dim=1).indices.cpu()  #1CHW float--->1HW index， max不仅会求出dim维度的那个最大值，而且还会消除dim这个维度          
         # Second-stage classifier (optional)
         # pred = utils.general.apply_classifier(pred, classifier_model, im, im0s)
         
         # Process predictions
-        for i, det in enumerate(pred[0]["vpld"]):  # per image
+        for i, det in enumerate(pred[0]["vpld"]):  # per image, 因为等同于bachsize=1,所以i永远是0
             # 0 1  2   3  4  5   6   7   8   9   10
             # x y len c1 s1 ADc ADs BCc BCs conf cls x&y:base_640  others:normal 1
             seen += 1
@@ -167,10 +168,8 @@ def run(
                 p, im0, frame = path, im0s.copy(), getattr(dataset, 'frame', 0)
 
             if(hyp["task_fs"]):
-                pred[0]["fs"][i] = torch.max(pred[0]["fs"][i],dim=1)
-                mask = pred[0]["fs"][i].indices.cpu() #chw
+                mask = pred[0]["fs"][0][i][:, :, np.newaxis]#hw->hw1  为了后面resize
                 mask = np.array(mask).astype("float")
-                mask = mask.transpose((1, 2, 0)) #chw-hwc
                 pre_color = copy.deepcopy(im0)            
                 mask = cv2.resize(mask, (im0.shape[0], im0.shape[1]))
                 mask = mask.astype("int32")

@@ -308,7 +308,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             ni = i + nb * epoch  # number integrated batches (since train start)
             imgs = imgs.to(device, non_blocking=True).float() / 255  # uint8 to float32, 0-255 to 0.0-1.0
             masks = masks.to(device, non_blocking=True)
-            
+            # print("imgs.shape:", imgs.shape)
+            # print("masks.shape:", masks.shape)
             # Warmup
             if ni <= nw:
                 xi = [0, nw]  # x interp
@@ -373,7 +374,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             callbacks.run('on_train_epoch_end', epoch=epoch)
             ema.update_attr(model, include=['yaml', 'nc', 'hyp', 'names', 'stride', 'class_weights'])
             final_epoch = (epoch + 1 == epochs) or stopper.possible_stop
-            if ((not noval or final_epoch) and (epoch >= min(0.5*epochs, 600)) and (epoch%30000 == 0)):  # Calculate mAP
+            if ((not noval or final_epoch) and (epoch >= min(0.5*epochs, 600)) and (epoch%100 == 0)):  # Calculate mAP
             #if ((not noval or final_epoch) and (epoch > min(0.5*epochs, 0)) and (epoch%1 == 0)):
                 results, maps, _ = validate.run(data_dict,
                                                 batch_size=batch_size // WORLD_SIZE,
