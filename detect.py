@@ -47,7 +47,7 @@ ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 from models.common import DetectMultiBackend
 from utils.dataloaders import IMG_FORMATS, VID_FORMATS, LoadImages, LoadScreenshots, LoadStreams
 from utils.general import (LOGGER, Profile, check_file, check_img_size, check_imshow, check_requirements, colorstr, cv2,
-                           increment_path, non_max_suppression, print_args, scale_boxes, strip_optimizer, xyxy2xywh)
+                           increment_path, non_max_suppression, print_args, scale_boxes, strip_optimizer, xyxy2xywh, elimination_holes)
 from utils.plots import Annotator, colors, save_one_box
 from utils.torch_utils import select_device, smart_inference_mode
 
@@ -172,7 +172,8 @@ def run(
                 mask = np.array(mask).astype("float")
                 pre_color = copy.deepcopy(im0)            
                 mask = cv2.resize(mask, (im0.shape[0], im0.shape[1]))
-                mask = mask.astype("int32")
+                mask = mask.astype(np.uint8)
+                mask = elimination_holes(mask, hyp["fs_num_class"], hyp["holes_rate"])
                 bchanel = 0*(mask==0)
                 gchanel = 255*(mask==0)
                 rchanel = 255*(mask==1)

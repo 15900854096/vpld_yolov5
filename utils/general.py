@@ -1309,3 +1309,23 @@ def nms_by_distance(boxes,nms_thresh=50):
     #print(keep_indices)
     #sys.exit()
     return keep_indices
+
+def elimination_holes(mask, fs_labels_num, rate):
+    for i in range(fs_labels_num):
+        mask = elimination_holes_singlelabel(mask, i, rate)
+    return mask    
+
+def elimination_holes_singlelabel(mask, label, rate):#把被label包围的空洞消除掉
+    masksize = mask.shape[0]*mask.shape[1]
+    tempmask=(mask==label).astype(np.uint8)
+    contours,hierarchy = cv2.findContours(tempmask,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+    cv_contours=[]
+    for contour in contours:
+        area = cv2.contourArea(contour)
+        if area <= masksize * rate:
+            cv_contours.append(contour)
+        else:
+            continue  
+    for r in cv_contours:
+        cv2.fillPoly(mask, [r], label)
+    return mask
