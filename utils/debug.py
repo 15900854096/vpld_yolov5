@@ -23,25 +23,26 @@ def draw_save(img,labels,address):
     print("save img to ",address)
     
 
-cnt=0
+vpldcnt=0
+fscnt=0
 def batch_draw_save(imgs,labelses):
     imgs = np.array(imgs)
     labelses = np.array(labelses)
-    global cnt
+    global vpldcnt
     for  i,img in enumerate(imgs):
         img=img[::-1]
         img = img.transpose((1, 2, 0))
         idx = labelses[:,0] == i
         labels = labelses[idx]
-        draw_save(img,labels[:,1:],r"./xuqing/flipud/%06d.jpg"%cnt)
-        cnt+=1
-        if(cnt>1000):
+        draw_save(img,labels[:,1:],r"./xuqing/flipud/vpld_%06d.jpg"%vpldcnt)
+        vpldcnt+=1
+        if(vpldcnt>1000):
             sys.exit()
             
 def batch_draw_mask_save(imgs, masks):
     imgs = np.array(imgs) #nchw grb
     masks = np.array(masks) #n1hw
-    global cnt
+    global fscnt
     for img,mask in zip(imgs,masks):
         mask = torch.squeeze(torch.from_numpy(mask)).long()
         img = img.transpose((1, 2, 0))[:,:,::-1] #chw rgb-> hwc rgb ->hwc bgr
@@ -51,7 +52,7 @@ def batch_draw_mask_save(imgs, masks):
         rchanel = 255*(mask==1)
         pre_color[:,:,0], pre_color[:,:,1], pre_color[:,:,2]  = bchanel, gchanel, rchanel
         xuanran_img = cv2.addWeighted(pre_color,0.3,img,0.7,0)
-        cv2.imwrite(r"./xuqing/flipud/z_%06d.jpg"%cnt,xuanran_img)
-        cnt+=1
-        if(cnt>110):
+        cv2.imwrite(r"./xuqing/flipud/freespace_%06d.jpg"%fscnt,xuanran_img)
+        fscnt+=1
+        if(fscnt>110):
             sys.exit()                  

@@ -301,9 +301,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         mem=0
         for i, (imgs, targets, paths, _, masks) in pbar:  # batch -------------------------------------------------------------
             # batch_draw_mask_save(imgs,masks)
-            # continue
-            #batch_draw_save(imgs,targets)
-            #continue 
+            # batch_draw_save(imgs,targets)
+            # continue 
             callbacks.run('on_train_batch_start')
             ni = i + nb * epoch  # number integrated batches (since train start)
             imgs = imgs.to(device, non_blocking=True).float() / 255  # uint8 to float32, 0-255 to 0.0-1.0

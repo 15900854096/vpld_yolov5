@@ -170,7 +170,7 @@ def run(
             if(hyp["task_fs"]):
                 mask = pred[0]["fs"][0][i][:, :, np.newaxis]#hw->hw1  为了后面resize
                 mask = np.array(mask).astype("float")
-                pre_color = copy.deepcopy(im0)            
+                pre_color = copy.deepcopy(im0)
                 mask = cv2.resize(mask, (im0.shape[0], im0.shape[1]))
                 mask = mask.astype(np.uint8)
                 mask = elimination_holes(mask, hyp["fs_num_class"], hyp["holes_rate"])

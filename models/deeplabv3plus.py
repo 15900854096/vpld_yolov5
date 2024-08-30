@@ -36,7 +36,7 @@ with open(ROOT / 'data/hyps/hyp.scratch-low.yaml', errors='ignore') as f:
 class DeepLabHeadV3Plus(nn.Module):
     def __init__(self, in_channels, low_level_channels, imgsize=640, num_classes=2, aspp_dilate=[12, 24, 36]):
         super(DeepLabHeadV3Plus, self).__init__()
-        self.imgsize = imgsize
+        self.imgsize = hyp["imgsz"]
         self.project = nn.Sequential( 
             nn.Conv2d(low_level_channels, 48, 1, bias=False),
             nn.BatchNorm2d(48),
