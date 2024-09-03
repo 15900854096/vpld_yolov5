@@ -57,9 +57,9 @@ class DeepLabHeadV3Plus(nn.Module):
         low_level_feature = self.project( feature['low_level'] )
         output_feature = self.aspp(feature['out'])
         torch.use_deterministic_algorithms(False)
-        output_feature = F.interpolate(output_feature, size=low_level_feature.shape[2:], mode='bilinear', align_corners=False)
+        output_feature = F.interpolate(output_feature, size=low_level_feature.shape[2:], mode='bilinear', align_corners=True)
         res = self.classifier( torch.cat( [ low_level_feature, output_feature ], dim=1 ) )
-        res = F.interpolate(res, size=[self.imgsize, self.imgsize], mode='bilinear', align_corners=False)
+        res = F.interpolate(res, size=[self.imgsize, self.imgsize], mode='bilinear', align_corners=True)
         return res
     
     def _init_weight(self):
@@ -92,7 +92,7 @@ class ASPPPooling(nn.Sequential):
         size = x.shape[-2:]
         x = super(ASPPPooling, self).forward(x)
         torch.use_deterministic_algorithms(False)
-        return F.interpolate(x, size=size, mode='bilinear', align_corners=False)
+        return F.interpolate(x, size, None,  mode='bilinear', align_corners=True)
 
 class ASPP(nn.Module):
     def __init__(self, in_channels, atrous_rates=[6, 12, 18]):

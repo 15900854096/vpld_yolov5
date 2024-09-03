@@ -6,6 +6,7 @@ Loss functions
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
 import sys
 import time
 import yaml
@@ -169,9 +170,14 @@ class ComputeLoss:
         vpld_weight = hyp["vpld_weight"]
         fs_weight = hyp["fs_weight"]
         if hyp["task_fs"]:
-            fs_gt = self.build_fs_targets(masks)
-            #lfs += self.fslossF(p["fs"][0], fs_gt) * fs_weight #self.BCEcls(pcls, t)  # BCE
-            lfs += self.fslossF(p["fs"][0], masks) * fs_weight
+            fs_gt = self.build_fs_targets(masks)# nhw->nchw
+            #lfs += self.fslossF(p["fs"][0], masks) * fs_weight
+            
+            cls_weights = np.ones([self.fs_num_class], np.float32)
+            cls_weights = torch.from_numpy(cls_weights)
+            cls_weights = cls_weights.to(self.device)
+            lfs += CE_Loss(p["fs"][0], masks, cls_weights, num_classes = self.fs_num_class) + Dice_loss(p["fs"][0], fs_gt)
+            
             
         random.seed(time.time_ns()%(2**32 - 1))
         # Losses
@@ -474,6 +480,7 @@ class ComputeLoss:
         return tcls, Atbox, Aindices, Btbox, Bindices, anch
     
     def build_fs_targets(self, masks):
+        masks = torch.unsqueeze(masks, dim=1) #nhw->n1hw
         bs, c, h, w=masks.shape
         fs_gt = torch.zeros((bs, self.fs_num_class, h, w), dtype=masks.dtype, device=self.device)
         for i in range(self.fs_num_class):
@@ -532,3 +539,37 @@ class MultiClassDiceLoss(nn.Module):
 		
 		# 每个类别的平均 dice_loss
 		return total_loss / C
+
+#come from yuanwushui fs
+def CE_Loss(inputs, target, cls_weights, num_classes=2):
+    n, c, h, w = inputs.size()
+    nt, ht, wt = target.size()
+    if h != ht and w != wt:
+        inputs = F.interpolate(inputs, size=(ht, wt), mode="bilinear", align_corners=True)
+
+    temp_inputs = inputs.transpose(1, 2).transpose(2, 3).contiguous().view(-1, c)
+    temp_target = target.view(-1)
+
+    CE_loss  = nn.CrossEntropyLoss(weight=cls_weights, ignore_index=num_classes)(temp_inputs, temp_target)
+    return CE_loss
+
+def Dice_loss(inputs, target, beta=1, smooth = 1e-5):
+    n, c, h, w = inputs.size()
+    target = target.permute(0,2,3,1) #nchw ---->nhwc
+    nt, ht, wt, ct = target.size()
+    if h != ht and w != wt:
+        inputs = F.interpolate(inputs, size=(ht, wt), mode="bilinear", align_corners=True)
+        
+    temp_inputs = torch.softmax(inputs.transpose(1, 2).transpose(2, 3).contiguous().view(n, -1, c),-1)
+    temp_target = target.view(n, -1, ct)
+
+    #--------------------------------------------#
+    #   计算dice loss
+    #--------------------------------------------#
+    tp = torch.sum(temp_target[...,:-1] * temp_inputs, axis=[0,1])
+    fp = torch.sum(temp_inputs                       , axis=[0,1]) - tp
+    fn = torch.sum(temp_target[...,:-1]              , axis=[0,1]) - tp
+
+    score = ((1 + beta ** 2) * tp + smooth) / ((1 + beta ** 2) * tp + beta ** 2 * fn + fp + smooth)
+    dice_loss = 1 - torch.mean(score)
+    return dice_loss

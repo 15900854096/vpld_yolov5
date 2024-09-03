@@ -235,7 +235,7 @@ def run(
         with dt[2]:
             #             0  1  2   3    4   5   6    7    8  9  10  11  12  13  14   15   16   17
             #predictions: Ax Ay Ac1 As1 Ac2 As2 Alen Aobj  Bx By Bc1 Bs1 Bc2 Bs2 Blen Bobj cls1 cls2
-            preds["vpld"] = non_max_suppression(preds["vpld"],
+            vpld_buffer = non_max_suppression(preds["vpld"],
                                         conf_thres,
                                         iou_thres,
                                         imgsz,
@@ -248,10 +248,10 @@ def run(
             # x y len c1 s1 ADc ADs BCc BCs conf cls x&y:base_640  others:normal 1
             
             if(hyp["task_fs"]):
-                preds["fs"][0] = torch.max(preds["fs"][0],dim=1).indices.cpu()  #NCHW float--->NHW index， max不仅会求出dim维度的那个最大值，而且还会消除dim这个维度
+                fs_buffer = torch.max(preds["fs"][0],dim=1).indices.cpu()  #NCHW float--->NHW index， max不仅会求出dim维度的那个最大值，而且还会消除dim这个维度
                                 
         # Metrics
-        for si, pred in enumerate(preds["vpld"]):
+        for si, pred in enumerate(vpld_buffer):
             
             
             ori_shape = shapes[si][0]
@@ -269,12 +269,12 @@ def run(
                 pred[:, 10] = 0
                 
             if(hyp["task_fs"]):
-                premask = np.array(preds["fs"][0])[si]
-                gtmask = np.array(masks[si].cpu())[0]# torch 1hw -> np 1hw -> np hw
-                # print("np.array(masks[si].cpu()): " , np.array(masks[si].cpu()).shape)
-                # print("premask: " , premask[np.newaxis, :, :].shape)
-                # sys.exit()
-                fs_cal.update(np.array(masks[si].cpu()),premask[np.newaxis, :, :])
+                premask = np.array(fs_buffer[si])
+                gtmask = np.array(masks[si].cpu())# torch hw -> np hw
+                # print("premask: " , premask.shape)
+                # print("gtmask: " , gtmask.shape)
+                #sys.exit()
+                fs_cal.update(np.array(gtmask),premask)
                 fs_cur.append(np.sum(premask==gtmask)/(gtmask.shape[0]*gtmask.shape[1]))
             else:
                 fs_cur.append(1.0)

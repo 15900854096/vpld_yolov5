@@ -440,7 +440,7 @@ class StreamSegMetrics(_StreamMetrics):
         self.n_classes = n_classes
         self.confusion_matrix = np.zeros((n_classes, n_classes))
 
-    def update(self, label_trues, label_preds):#label_trues, label_preds 必须是 N1HW, 即通道数必须是1
+    def update(self, label_trues, label_preds):#label_trues, label_preds 必须是相同形状
         for lt, lp in zip(label_trues, label_preds):
             self.confusion_matrix += self._fast_hist( lt.flatten(), lp.flatten() )
     

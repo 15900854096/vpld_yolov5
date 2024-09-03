@@ -57,9 +57,9 @@ class Detect(nn.Module):
         self.register_buffer('anchors', torch.tensor(anchors).float().view(self.nl, -1, 1)) #view(self.nl, -1, 2)  # shape(nl,na,2)
         #self.m = nn.ModuleList(nn.Conv2d(x, self.no * self.na, 1) for x in ch)  # output conv
         print("@@@@@@@@@@@@@@@@@@@@@:", ch)#low_level  8downsample  16downsample  32downsample
-        self.m_merge_diff_size_buffer_conv = MergeDiffSizeBufferConv(listch=ch[1:])#输出通道数为1,2,3的中间一个即ch[2]
-        self.m_vpld_decoup_conv    = DecoupConv(ch[2], self.no, self.nc , self.na, 3)
-        self.deeplabheadv3plus = DeepLabHeadV3Plus(in_channels=ch[2], low_level_channels=ch[0], num_classes = hyp["fs_num_class"])
+        self.m_merge_diff_size_buffer_conv = MergeDiffSizeBufferConv(listch=ch[2:])#输出通道数为1,2,3的中间一个即ch[2]
+        self.m_vpld_decoup_conv    = DecoupConv(ch[3], self.no, self.nc , self.na, 3)
+        self.deeplabheadv3plus = DeepLabHeadV3Plus(in_channels=ch[1], low_level_channels=ch[0], num_classes = hyp["fs_num_class"])
         
         self.inplace = inplace  # use inplace ops (e.g. slice assignment)
 
@@ -68,11 +68,11 @@ class Detect(nn.Module):
         #output=[0]
         output={"vpld":[0],"fs":[0]}
         
-        temp = self.m_merge_diff_size_buffer_conv(x[1:])
+        temp = self.m_merge_diff_size_buffer_conv(x[2:])
         if(hyp["task_fs"]):
             feature={}
             feature['low_level']=x[0]
-            feature['out'] = temp
+            feature['out'] = x[1]
             
         if self.export:
             output["vpld"]=self.m_vpld_decoup_conv(temp)
@@ -81,7 +81,7 @@ class Detect(nn.Module):
             return output
         
         for i in range(self.nl):#这里的self.nl==1
-            output["vpld"][i] = self.m_vpld_decoup_conv(temp)  # conv
+            output["vpld"][i] = torch.zeros_like(self.m_vpld_decoup_conv(temp))  # conv
             if(hyp["task_fs"]):
                 output["fs"][i]=self.deeplabheadv3plus(feature)  #self.fs(temp)
             bs, _, ny, nx = output["vpld"][i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
@@ -120,7 +120,7 @@ class Detect(nn.Module):
                         class12[:,:,:,:,1] = 0
                     y = torch.cat((Axy, Ac1s1c2s2, Alen, Aobj, Bxy, Bc1s1c2s2, Blen, Bobj, class12), 4)
                 #z["vpld"].append(y.view(bs, self.na * nx * ny, self.no)) #nhwc
-                z["vpld"].append(y.view(bs, self.na * nx * ny, self.no)) #nhwc
+                z["vpld"].append(torch.zeros_like(y.view(bs, self.na * nx * ny, self.no))) #nhwc
                 z["fs"].append(output["fs"][i]) #nhwc
         return output if self.training else z if self.export else (z, output)
         #return output if self.training else (torch.cat(z, 1),) if self.export else (torch.cat(z, 1), output)

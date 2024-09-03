@@ -29,6 +29,7 @@ from torch.utils.data import DataLoader, Dataset, dataloader, distributed
 from tqdm import tqdm
 import copy
 import re
+import cv2
 
 from utils.augmentations import (Albumentations, augment_hsv, classify_albumentations, classify_transforms, copy_paste,
                                  letterbox, mixup, random_perspective, rain, sunlight, AddGaussianNoise, AddPepperSaltNoise)
@@ -437,7 +438,7 @@ def img2label_paths(img_paths):
 
 def img2mask_paths(img_paths):
     sa, sb = f'{os.sep}images{os.sep}', f'{os.sep}labels_mask{os.sep}'
-    return [sb.join(x.rsplit(sa, 1)).rsplit('.', 1)[0] + '.png' for x in img_paths]
+    return [sb.join(x.rsplit(sa, 1)).rsplit('.', 1)[0] + '.jpg' for x in img_paths]
 
 
 class LoadImagesAndLabels(Dataset):
@@ -695,6 +696,7 @@ class LoadImagesAndLabels(Dataset):
             shape = self.batch_shapes[self.batch[index]] if self.rect else self.img_size  # final letterboxed shape
             img, ratio, pad = letterbox(img, shape, auto=False, scaleup=self.augment)
             mask, _, _ = letterbox(mask, shape, auto=False, scaleup=self.augment)
+            mask[mask >= hyp["fs_num_class"]] = hyp["fs_num_class"] #avoid resize make pixel value out of range
             shapes = (h0, w0), ((h / h0, w / w0), pad)  # for COCO mAP rescaling
 
             labels = self.labels[index].copy()
@@ -813,7 +815,7 @@ class LoadImagesAndLabels(Dataset):
         img = img.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
         img = np.ascontiguousarray(img)
 
-        mask = mask[np.newaxis, :, :]  #(h,w)->(1,h,w)  mask chanel must equal 1
+        #mask = mask[np.newaxis, :, :]  #(h,w)->(1,h,w)  mask chanel must equal 1
         mask = np.ascontiguousarray(mask)
         
         return torch.from_numpy(img), labels_out, self.im_files[index], shapes, torch.from_numpy(mask)
