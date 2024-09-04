@@ -152,6 +152,7 @@ class ComputeLoss:
         self.fslossF = FocalLossDeeplabv3plus(ignore_index=255, size_average=True) #nn.MSELoss(reduction='sum') # MultiClassDiceLoss() #nn.MSELoss(reduction='sum')
         self.MSEobj = MSEobj
         self.MSEthetaAD = MSEthetaAD
+        self.MutilDice = MultiClassDiceLoss()
         self.na = m.na  # number of anchors
         self.nc = m.nc  # number of classes
         self.nl = m.nl  # number of layers
@@ -170,12 +171,14 @@ class ComputeLoss:
         vpld_weight = hyp["vpld_weight"]
         fs_weight = hyp["fs_weight"]
         if hyp["task_fs"]:
-            fs_gt = self.build_fs_targets(masks)# nhw->nchw
-            #lfs += self.fslossF(p["fs"][0], masks) * fs_weight
-            
+            fs_gt = self.build_fs_targets(masks) #nhw--->nchw
             cls_weights = torch.ones(self.fs_num_class, device=self.device)
-            lfs += CE_Loss(p["fs"][0], masks, cls_weights, num_classes = self.fs_num_class) * fs_weight
-            lfs += Dice_loss(p["fs"][0], fs_gt)* fs_weight
+            celoss = CE_Loss(p["fs"][0], masks, cls_weights, num_classes = self.fs_num_class) * fs_weight
+            if(self.fs_num_class > 2):
+                diceloss = self.MutilDice(p["fs"][0], fs_gt)
+            else:
+                diceloss = Dice_loss(p["fs"][0], fs_gt)
+            lfs += (celoss + diceloss) * fs_weight
             
             
         random.seed(time.time_ns()%(2**32 - 1))
@@ -487,57 +490,57 @@ class ComputeLoss:
         return fs_gt.to(torch.float32)
 
 class BinaryDiceLoss(nn.Module):
-	def __init__(self):
-		super(BinaryDiceLoss, self).__init__()
-	
-	def forward(self, input, targets):
-		# 获取每个批次的大小 N
-		N = targets.size()[0]
-		# 平滑变量
-		smooth = 1
-		# 将宽高 reshape 到同一纬度
-		input_flat = input.view(N, -1)
-		targets_flat = targets.view(N, -1)
-	
-		# 计算交集
-		intersection = input_flat * targets_flat 
-		N_dice_eff = (2 * intersection.sum(1) + smooth) / (input_flat.sum(1) + targets_flat.sum(1) + smooth)
-		# 计算一个批次中平均每张图的损失
-		loss = 1 - N_dice_eff.sum() / N
-		return loss
+    def __init__(self):
+        super(BinaryDiceLoss, self).__init__()
+    
+    def forward(self, input, targets):
+        # 获取每个批次的大小 N
+        N = targets.size()[0]
+        # 平滑变量
+        smooth = 1
+        # 将宽高 reshape 到同一纬度
+        input_flat = input.view(N, -1)
+        targets_flat = targets.view(N, -1)
+    
+        # 计算交集
+        intersection = input_flat * targets_flat 
+        N_dice_eff = (2 * intersection.sum(1) + smooth) / (input_flat.sum(1) + targets_flat.sum(1) + smooth)
+        # 计算一个批次中平均每张图的损失
+        loss = 1 - N_dice_eff.sum() / N
+        return loss
 
 class MultiClassDiceLoss(nn.Module):
-	def __init__(self, weight=None, ignore_index=None, **kwargs):
-		super(MultiClassDiceLoss, self).__init__()
-		self.weight = weight
-		self.ignore_index = ignore_index
-		self.kwargs = kwargs
-	
-	def forward(self, input, target):
-		"""
-			input tesor of shape = (N, C, H, W)
-			target tensor of shape = (N, H, W)
-		"""
-		# 先将 target 进行 one-hot 处理，转换为 (N, C, H, W)
-		nclass = input.shape[1]
-		#target = one_hot(target.long(), nclass)
+    def __init__(self, weight=None, ignore_index=None, **kwargs):
+        super(MultiClassDiceLoss, self).__init__()
+        self.weight = weight
+        self.ignore_index = ignore_index
+        self.kwargs = kwargs
+    
+    def forward(self, input, target):
+        """
+            input tesor of shape = (N, C, H, W)
+            target tensor of shape = (N, H, W)
+        """
+        # 先将 target 进行 one-hot 处理，转换为 (N, C, H, W)
+        #nclass = input.shape[1]
+        #target = one_hot(target.long(), nclass)
 
-		assert input.shape == target.shape, "predict & target shape do not match"
-		
-		binaryDiceLoss = BinaryDiceLoss()
-		total_loss = 0
-		
-		# 归一化输出
-		#logits = F.softmax(input, dim=1)
-		C = target.shape[1]
-		
-		# 遍历 channel，得到每个类别的二分类 DiceLoss
-		for i in range(C):
-			dice_loss = binaryDiceLoss(input[:, i], target[:, i])
-			total_loss += dice_loss
-		
-		# 每个类别的平均 dice_loss
-		return total_loss / C
+        assert input.shape == target.shape, "predict & target shape do not match"
+        
+        binaryDiceLoss = BinaryDiceLoss()
+        total_loss = 0
+        
+        # 归一化输出
+        #logits = F.softmax(input, dim=1)
+        C = target.shape[1]
+        
+        # 遍历 channel，得到每个类别的二分类 DiceLoss
+        for i in range(C):
+            dice_loss = binaryDiceLoss(input[:, i], target[:, i])
+            total_loss += dice_loss
+        
+        # 每个类别的平均 dice_loss
+        return total_loss / C
 
 #come from yuanwushui fs
 def CE_Loss(inputs, target, cls_weights, num_classes=2):
@@ -553,8 +556,9 @@ def CE_Loss(inputs, target, cls_weights, num_classes=2):
     CE_loss  = nn.CrossEntropyLoss(ignore_index=num_classes)(temp_inputs, temp_target)
     return CE_loss
 
+#仅限于二分类使用
 def Dice_loss(inputs, target, beta=1, smooth = 1e-5):
-    n, c, h, w = inputs.size()
+    n, c, h, w = inputs.size() 
     target = target.permute(0,2,3,1) #nchw ---->nhwc
     nt, ht, wt, ct = target.size()
     if h != ht and w != wt:

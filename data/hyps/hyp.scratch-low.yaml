@@ -49,7 +49,7 @@ task_vpld: 1
 vpld_weight: 1
 task_fs: 1 #代表是否有多任务中的fs
 fs_weight: 2
-fs_num_class: 2
+fs_num_class: 10
 
 holes_rate: 0
 
