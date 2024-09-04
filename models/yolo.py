@@ -60,7 +60,6 @@ class Detect(nn.Module):
         self.m_merge_diff_size_buffer_conv = MergeDiffSizeBufferConv(listch=ch[2:])#输出通道数为1,2,3的中间一个即ch[2]
         self.m_vpld_decoup_conv    = DecoupConv(ch[3], self.no, self.nc , self.na, 3)
         self.deeplabheadv3plus = DeepLabHeadV3Plus(in_channels=ch[1], low_level_channels=ch[0], num_classes = hyp["fs_num_class"])
-        
         self.inplace = inplace  # use inplace ops (e.g. slice assignment)
 
     def forward(self, x):
@@ -77,7 +76,7 @@ class Detect(nn.Module):
         if self.export:
             output["vpld"]=self.m_vpld_decoup_conv(temp)
             if(hyp["task_fs"]):
-                output["fs"]=self.deeplabheadv3plus(feature)  #self.fs(temp)
+                output["fs"] = self.deeplabheadv3plus(feature)   #self.fs(temp)
             return output
         
         for i in range(self.nl):#这里的self.nl==1
@@ -87,7 +86,8 @@ class Detect(nn.Module):
                 output["vpld"][i] = torch.zeros_like(self.m_vpld_decoup_conv(temp))  # conv
                 
             if(hyp["task_fs"]):
-                output["fs"][i]=self.deeplabheadv3plus(feature)  #self.fs(temp)
+                output["fs"][i] = self.deeplabheadv3plus(feature)  #self.fs(temp)
+                
             bs, _, ny, nx = output["vpld"][i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
             output["vpld"][i] = output["vpld"][i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
             output["vpld"][i] = output["vpld"][i]
@@ -133,6 +133,9 @@ class Detect(nn.Module):
                     z["fs"].append(output["fs"][i]) #nhwc
                 else:
                     z["fs"].append(torch.zeros_like(output["fs"][i])) #nhwc
+        #train    :  output
+        #export   :  z
+        #val|test :  (z,output)         
         return output if self.training else z if self.export else (z, output)
         #return output if self.training else (torch.cat(z, 1),) if self.export else (torch.cat(z, 1), output)
 
@@ -175,6 +178,7 @@ class BaseModel(nn.Module):
 
     def _forward_once(self, x, profile=False, visualize=False):
         y, dt = [], []  # outputs
+        input_image_sz = x.shape[-2]
         for m in self.model:
             #print("!!!!!m:&m.f ",m , m.f)
             if m.f != -1:  # if not from previous layer
@@ -182,9 +186,22 @@ class BaseModel(nn.Module):
             if profile:
                 self._profile_one_layer(m, x, dt)
             x = m(x)  # run
+            
+            if isinstance(m, (Detect)) and hyp["task_fs"]:
+                if(m.export):
+                    x["fs"] =  F.interpolate(x["fs"], size = input_image_sz, mode='bilinear', align_corners=True)
+                else:
+                    for i in range(m.nl):
+                        if isinstance(x, (tuple)):
+                            x[0]["fs"][i] =  F.interpolate(x[0]["fs"][i], size = input_image_sz, mode='bilinear', align_corners=True)
+                            x[1]["fs"][i] =  F.interpolate(x[1]["fs"][i], size = input_image_sz, mode='bilinear', align_corners=True)
+                        else:       
+                            x["fs"][i] =  F.interpolate(x["fs"][i], size = input_image_sz, mode='bilinear', align_corners=True)
+
             y.append(x if m.i in self.save else None)  # save output
             if visualize:
                 feature_visualization(x, m.type, m.i, save_dir=visualize)
+        
         #print("self.save&y: ", self.save, len(y))        
         #sys.exit()
         return x

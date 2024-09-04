@@ -34,9 +34,9 @@ with open(ROOT / 'data/hyps/hyp.scratch-low.yaml', errors='ignore') as f:
     hyp = yaml.safe_load(f)
     
 class DeepLabHeadV3Plus(nn.Module):
-    def __init__(self, in_channels, low_level_channels, imgsize=640, num_classes=2, aspp_dilate=[12, 24, 36]):
+    def __init__(self, in_channels, low_level_channels, num_classes=2, aspp_dilate=[12, 24, 36]):
         super(DeepLabHeadV3Plus, self).__init__()
-        self.imgsize = hyp["imgsz"]
+             
         self.project = nn.Sequential( 
             nn.Conv2d(low_level_channels, 48, 1, bias=False),
             nn.BatchNorm2d(48),
@@ -59,7 +59,6 @@ class DeepLabHeadV3Plus(nn.Module):
         torch.use_deterministic_algorithms(False)
         output_feature = F.interpolate(output_feature, size=low_level_feature.shape[2:], mode='bilinear', align_corners=True)
         res = self.classifier( torch.cat( [ low_level_feature, output_feature ], dim=1 ) )
-        res = F.interpolate(res, size=[self.imgsize, self.imgsize], mode='bilinear', align_corners=True)
         return res
     
     def _init_weight(self):
