@@ -81,7 +81,11 @@ class Detect(nn.Module):
             return output
         
         for i in range(self.nl):#这里的self.nl==1
-            output["vpld"][i] = torch.zeros_like(self.m_vpld_decoup_conv(temp))  # conv
+            if(hyp["task_vpld"]):
+                output["vpld"][i] = self.m_vpld_decoup_conv(temp)
+            else:
+                output["vpld"][i] = torch.zeros_like(self.m_vpld_decoup_conv(temp))  # conv
+                
             if(hyp["task_fs"]):
                 output["fs"][i]=self.deeplabheadv3plus(feature)  #self.fs(temp)
             bs, _, ny, nx = output["vpld"][i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
@@ -120,8 +124,15 @@ class Detect(nn.Module):
                         class12[:,:,:,:,1] = 0
                     y = torch.cat((Axy, Ac1s1c2s2, Alen, Aobj, Bxy, Bc1s1c2s2, Blen, Bobj, class12), 4)
                 #z["vpld"].append(y.view(bs, self.na * nx * ny, self.no)) #nhwc
-                z["vpld"].append(torch.zeros_like(y.view(bs, self.na * nx * ny, self.no))) #nhwc
-                z["fs"].append(output["fs"][i]) #nhwc
+                if(hyp["task_vpld"]):
+                    z["vpld"].append(y.view(bs, self.na * nx * ny, self.no)) #nhwc
+                else:
+                    z["vpld"].append(torch.zeros_like(y.view(bs, self.na * nx * ny, self.no))) #nhwc
+                    
+                if(hyp["task_fs"]):
+                    z["fs"].append(output["fs"][i]) #nhwc
+                else:
+                    z["fs"].append(torch.zeros_like(output["fs"][i])) #nhwc
         return output if self.training else z if self.export else (z, output)
         #return output if self.training else (torch.cat(z, 1),) if self.export else (torch.cat(z, 1), output)
 

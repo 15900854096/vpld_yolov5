@@ -173,10 +173,9 @@ class ComputeLoss:
             fs_gt = self.build_fs_targets(masks)# nhw->nchw
             #lfs += self.fslossF(p["fs"][0], masks) * fs_weight
             
-            cls_weights = np.ones([self.fs_num_class], np.float32)
-            cls_weights = torch.from_numpy(cls_weights)
-            cls_weights = cls_weights.to(self.device)
-            lfs += CE_Loss(p["fs"][0], masks, cls_weights, num_classes = self.fs_num_class) + Dice_loss(p["fs"][0], fs_gt)
+            cls_weights = torch.ones(self.fs_num_class, device=self.device)
+            lfs += CE_Loss(p["fs"][0], masks, cls_weights, num_classes = self.fs_num_class) * fs_weight
+            lfs += Dice_loss(p["fs"][0], fs_gt)* fs_weight
             
             
         random.seed(time.time_ns()%(2**32 - 1))
@@ -550,7 +549,8 @@ def CE_Loss(inputs, target, cls_weights, num_classes=2):
     temp_inputs = inputs.transpose(1, 2).transpose(2, 3).contiguous().view(-1, c)
     temp_target = target.view(-1)
 
-    CE_loss  = nn.CrossEntropyLoss(weight=cls_weights, ignore_index=num_classes)(temp_inputs, temp_target)
+    #CE_loss  = nn.CrossEntropyLoss(weight=cls_weights, ignore_index=num_classes)(temp_inputs, temp_target)
+    CE_loss  = nn.CrossEntropyLoss(ignore_index=num_classes)(temp_inputs, temp_target)
     return CE_loss
 
 def Dice_loss(inputs, target, beta=1, smooth = 1e-5):

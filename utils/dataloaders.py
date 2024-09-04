@@ -438,7 +438,7 @@ def img2label_paths(img_paths):
 
 def img2mask_paths(img_paths):
     sa, sb = f'{os.sep}images{os.sep}', f'{os.sep}labels_mask{os.sep}'
-    return [sb.join(x.rsplit(sa, 1)).rsplit('.', 1)[0] + '.jpg' for x in img_paths]
+    return [sb.join(x.rsplit(sa, 1)).rsplit('.', 1)[0] + '.png' for x in img_paths]
 
 
 class LoadImagesAndLabels(Dataset):
