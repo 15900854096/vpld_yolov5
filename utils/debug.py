@@ -5,6 +5,25 @@ import sys
 import copy
 import torch
 
+dict_col={
+    0:[255,0,0],
+    1:[0,0,255],
+    2:[0,255,0],
+    3:[125,0,0],
+    4:[0,125,0],
+    5:[0,0,125],
+    6:[125,125,0],
+    7:[125,0,125],
+    8:[0,125,125],
+    9:[125,125,125],
+}
+
+dict_col_b = {x: dict_col[x][0] for x in dict_col.keys()}
+dict_col_g = {x: dict_col[x][1] for x in dict_col.keys()}
+dict_col_r = {x: dict_col[x][2] for x in dict_col.keys()}
+
+list_col = list(dict_col.values())
+
 point_color = (0, 255, 0)  # BGR
 thickness = 1
 lineType = 8

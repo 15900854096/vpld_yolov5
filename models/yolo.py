@@ -58,7 +58,7 @@ class Detect(nn.Module):
         #self.m = nn.ModuleList(nn.Conv2d(x, self.no * self.na, 1) for x in ch)  # output conv
         print("@@@@@@@@@@@@@@@@@@@@@:", ch)#low_level  8downsample  16downsample  32downsample
         self.m_merge_diff_size_buffer_conv = MergeDiffSizeBufferConv(listch=ch[2:])#输出通道数为1,2,3的中间一个即ch[2]
-        self.m_vpld_decoup_conv    = DecoupConv(ch[3], self.no, self.nc , self.na, 3)
+        self.m_vpld_decoup_conv = DecoupConv(ch[3], self.no, self.nc , self.na, 3)
         self.deeplabheadv3plus = DeepLabHeadV3Plus(in_channels=ch[1], low_level_channels=ch[0], num_classes = hyp["fs_num_class"])
         self.inplace = inplace  # use inplace ops (e.g. slice assignment)
 

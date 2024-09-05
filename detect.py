@@ -48,6 +48,7 @@ from models.common import DetectMultiBackend
 from utils.dataloaders import IMG_FORMATS, VID_FORMATS, LoadImages, LoadScreenshots, LoadStreams
 from utils.general import (LOGGER, Profile, check_file, check_img_size, check_imshow, check_requirements, colorstr, cv2,
                            increment_path, non_max_suppression, print_args, scale_boxes, strip_optimizer, xyxy2xywh, elimination_holes)
+from utils.debug import *
 from utils.plots import Annotator, colors, save_one_box
 from utils.torch_utils import select_device, smart_inference_mode
 
@@ -174,10 +175,12 @@ def run(
                 mask = cv2.resize(mask, (im0.shape[0], im0.shape[1]))
                 mask = mask.astype(np.uint8)
                 mask = elimination_holes(mask, hyp["fs_num_class"], hyp["holes_rate"])
-                bchanel = 0*(mask==0)
-                gchanel = 255*(mask==0)
-                rchanel = 255*(mask==1)
+                
+                bchanel =  np.vectorize(dict_col_b.get)(mask)
+                gchanel =  np.vectorize(dict_col_g.get)(mask)
+                rchanel =  np.vectorize(dict_col_r.get)(mask)
                 pre_color[:,:,0], pre_color[:,:,1], pre_color[:,:,2]  = bchanel, gchanel, rchanel
+                
                 im0 = cv2.addWeighted(pre_color,0.3,im0,0.7,0)
             
             p = Path(p)  # to Path

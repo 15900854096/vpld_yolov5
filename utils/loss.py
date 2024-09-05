@@ -55,6 +55,8 @@ class FocalLossDeeplabv3plus(nn.Module):
         self.size_average = size_average
 
     def forward(self, inputs, targets):
+        #inputs: NCHW
+        #target: NHW N1HW均可，后面会维度压缩
         targets = torch.squeeze(targets).long()
         ce_loss = F.cross_entropy(
             inputs, targets, reduction='none', ignore_index=self.ignore_index)
@@ -149,7 +151,7 @@ class ComputeLoss:
         self.balance = {3: [1.0, 1.0, 1.0]}.get(m.nl, [1.0, 1.0, 1.0, 1.0, 1.0])  # P3-P7
         self.ssi = list(m.stride).index(16) if autobalance else 0  # stride 16 index
         self.MSEwh, self.BCEcls, self.BCEobj, self.gr, self.hyp, self.autobalance = MSEwh, BCEcls, BCEobj, 1.0, h, autobalance
-        self.fslossF = FocalLossDeeplabv3plus(ignore_index=255, size_average=True) #nn.MSELoss(reduction='sum') # MultiClassDiceLoss() #nn.MSELoss(reduction='sum')
+        self.foclaloss = FocalLossDeeplabv3plus(ignore_index=255, size_average=True) #nn.MSELoss(reduction='sum') # MultiClassDiceLoss() #nn.MSELoss(reduction='sum')
         self.MSEobj = MSEobj
         self.MSEthetaAD = MSEthetaAD
         self.MutilDice = MultiClassDiceLoss()
@@ -172,13 +174,18 @@ class ComputeLoss:
         fs_weight = hyp["fs_weight"]
         if hyp["task_fs"]:
             fs_gt = self.build_fs_targets(masks) #nhw--->nchw
-            cls_weights = torch.ones(self.fs_num_class, device=self.device)
-            celoss = CE_Loss(p["fs"][0], masks, cls_weights, num_classes = self.fs_num_class) * fs_weight
-            if(self.fs_num_class > 2):
-                diceloss = self.MutilDice(p["fs"][0], fs_gt)
+            
+            if(self.hyp["fs_use_focalloss"]):
+                loss_pixel = self.foclaloss(p["fs"][0], masks)
             else:
-                diceloss = Dice_loss(p["fs"][0], fs_gt)
-            lfs += (celoss + diceloss) * fs_weight
+                cls_weights = torch.ones(self.fs_num_class, device=self.device)
+                loss_pixel = CE_Loss(p["fs"][0], masks, cls_weights, num_classes = self.fs_num_class)
+            
+            if(self.fs_num_class > 2):
+                loss_global = self.MutilDice(p["fs"][0], fs_gt)
+            else:
+                loss_global = Dice_loss(p["fs"][0], fs_gt)
+            lfs += (loss_pixel + loss_global) * fs_weight
             
             
         random.seed(time.time_ns()%(2**32 - 1))
@@ -509,6 +516,7 @@ class BinaryDiceLoss(nn.Module):
         loss = 1 - N_dice_eff.sum() / N
         return loss
 
+#多分类使用这个
 class MultiClassDiceLoss(nn.Module):
     def __init__(self, weight=None, ignore_index=None, **kwargs):
         super(MultiClassDiceLoss, self).__init__()

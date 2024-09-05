@@ -45,7 +45,7 @@ class DeepLabHeadV3Plus(nn.Module):
 
         self.aspp = ASPP(in_channels, aspp_dilate)
         self.upsample4 = nn.Upsample(scale_factor=2, mode='nearest')
-        midch = (int)(4*hyp["fs_num_class"])
+        midch = (int)(4*num_classes)
         self.classifier = nn.Sequential(
             nn.Conv2d(304, midch, 3, padding=1, bias=False),
             nn.BatchNorm2d(midch),
