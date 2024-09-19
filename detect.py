@@ -192,16 +192,16 @@ def run(
                         leng = leng*w
                         p1 = (round(float(x)) , round(float(y)))
                         p2 = (round(float(x+leng*c1)) , round(float(y+leng*s1)))
-                        p3 = (round(float(p2[0]+100*BCc)) , round(float(p2[1]+100*BCs)))
-                        p4 = (round(float(p1[0]+100*ADc)) , round(float(p1[1]+100*ADs)))
+                        p3 = (round(float(p2[0]+500*BCc)) , round(float(p2[1]+500*BCs)))
+                        p4 = (round(float(p1[0]+500*ADc)) , round(float(p1[1]+500*ADs)))
                         #print(p1,p2,p3,p4)
                         if(cls==0):
                             color = (0,255,0)
                         else:
                             color = (0,0,255)    
-                        cv2.arrowedLine(im0, p1, p2, color, 2, 4)
-                        cv2.arrowedLine(im0, p2, p3, color, 2, 4)
-                        cv2.arrowedLine(im0, p1, p4, color, 2, 4)
+                        cv2.arrowedLine(im0, p1, p2, color, 1, 4)
+                        cv2.line(im0, p2, p3, color, 1, 4)
+                        cv2.arrowedLine(im0, p1, p4, color, 1, 4)
                         cv2.putText(im0,"%0.2f"%float(conf),(int(0.5*(p1[0]+p2[0])),int(0.5*(p1[1]+p2[1]))),cv2.FONT_HERSHEY_COMPLEX,1,(255,255,255),1)
                         #c = int(cls)  # integer class
                         #label = None if hide_labels else (names[c] if hide_conf else f'{names[c]} {conf:.2f}')
