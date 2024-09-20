@@ -13,7 +13,6 @@ import torch
 
 from utils import TryExcept, threaded
 
-
 def fitness(x):
     # Model fitness as a weighted combination of metrics
     #x=[P, R, mAP@0.5, mAP@0.95, mAP@0.5:0.95, loss_box, loss_obj, loss_cls]
@@ -405,3 +404,64 @@ def box_iou_poly(box1, box2, eps=1e-7):
         for j in range(M):
             ioumat[i][j]=bbox_iou_eval(tmp1[i], tmp2[j])
     return ioumat        
+
+class Cal_R_Matrix:
+    def __init__(self,imgsz):
+        self.A_x_err = 0
+        self.A_y_err = 0
+        self.B_x_err = 0
+        self.B_y_err = 0
+        self.AD_theta_err = 0
+        self.BC_theta_err = 0
+        self.cnt = 0
+        self.imgsz = imgsz
+        self.polycar = np.array([270/640.0, 193/640.0, 370/640.0, 193/640.0, 370/640.0, 445/640.0, 270/640.0, 445/640.0]).reshape(4, 2)  # 四边形二维坐标表示
+        self.polycar = Polygon(self.polycar).convex_hull
+    def reset(self):
+        self.A_x_err = 0
+        self.A_y_err = 0
+        self.B_x_err = 0
+        self.B_y_err = 0
+        self.AD_theta_err = 0
+        self.BC_theta_err = 0
+        self.cnt = 0
+    def update(self, detections, labels, sz, iou_thres=0.9):
+        from utils.general import PI
+        boxes_labels = labels[:, 1:] / sz 
+        boxes_detections = detections[:, :8] / sz
+        
+        N = boxes_labels.shape[0]
+        M = boxes_detections.shape[0]
+        
+        for i in range(N):
+            for j in range(M):
+                iou = bbox_iou_eval(boxes_labels[i], boxes_detections[j])
+                if (    (iou > iou_thres) \
+                    and (not self.polycar.disjoint(Polygon(np.array(boxes_labels[i].cpu()).reshape(4,2)).convex_hull)) \
+                    ): 
+                    #  0  1  2  3  4  5  6  7
+                    # x1 y1 x2 y2 x3 y3 x4 y4
+                    label_AD_theta = torch.atan2(boxes_labels[i][7]-boxes_labels[i][1],boxes_labels[i][6]-boxes_labels[i][0])
+                    label_BC_theta = torch.atan2(boxes_labels[i][5]-boxes_labels[i][3],boxes_labels[i][4]-boxes_labels[i][2])
+                    
+                    detection_AD_theta = torch.atan2(boxes_detections[j][7]-boxes_detections[j][1],boxes_detections[j][6]-boxes_detections[j][0])
+                    detection_BC_theta = torch.atan2(boxes_detections[j][5]-boxes_detections[j][3],boxes_detections[j][4]-boxes_detections[j][2])
+                    
+                    self.A_x_err += abs(boxes_labels[i][0] - boxes_detections[j][0])
+                    self.A_y_err += abs(boxes_labels[i][1] - boxes_detections[j][1])
+                    self.B_x_err += abs(boxes_labels[i][2] - boxes_detections[j][2])
+                    self.B_y_err += abs(boxes_labels[i][3] - boxes_detections[j][3])
+                    self.AD_theta_err += abs(label_AD_theta - detection_AD_theta) if abs(label_AD_theta - detection_AD_theta)<PI else 2*PI-abs(label_AD_theta - detection_AD_theta)
+                    self.BC_theta_err += abs(label_BC_theta - detection_BC_theta) if abs(label_BC_theta - detection_BC_theta)<PI else 2*PI-abs(label_BC_theta - detection_BC_theta)
+                    self.cnt+=1
+    def get_result(self):
+        if(self.cnt):
+            print("cnt: ", self.cnt)
+            print("A_x_err: ", self.A_x_err / self.cnt * self.imgsz)
+            print("A_y_err: ", self.A_y_err / self.cnt * self.imgsz)
+            print("B_x_err: ", self.B_x_err / self.cnt * self.imgsz)
+            print("B_y_err: ", self.B_y_err / self.cnt * self.imgsz)
+            print("AD_theta_err: ", self.AD_theta_err / self.cnt)
+            print("BC_theta_err: ", self.BC_theta_err / self.cnt)
+        else:
+            print("all lot can't match")

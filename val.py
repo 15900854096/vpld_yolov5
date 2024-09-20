@@ -42,7 +42,7 @@ from utils.dataloaders import create_dataloader
 from utils.general import (LOGGER, TQDM_BAR_FORMAT, Profile, check_dataset, check_img_size, check_requirements,
                            check_yaml, coco80_to_coco91_class, colorstr, increment_path, non_max_suppression,
                            print_args, scale_boxes, xywh2xyxy, xyxy2xywh, default_vlot_depth, default_hlot_depth, default_hlot_min_width)
-from utils.metrics import ConfusionMatrix, ap_per_class, box_iou, box_iou_poly
+from utils.metrics import ConfusionMatrix, ap_per_class, box_iou, box_iou_poly, Cal_R_Matrix
 from utils.plots import output_to_target, plot_images, plot_val_study
 from utils.torch_utils import select_device, smart_inference_mode
 
@@ -206,6 +206,8 @@ def run(
     jdict, stats, ap, ap_class = [], [], [], []
     callbacks.run('on_val_start')
     pbar = tqdm(dataloader, desc=s, bar_format=TQDM_BAR_FORMAT)  # progress bar
+    crm = Cal_R_Matrix(imgsz)
+    crm.reset()
     for batch_i, (im, targets, paths, shapes) in enumerate(pbar):
         callbacks.run('on_val_batch_start')
         with dt[0]:
@@ -325,6 +327,7 @@ def run(
                 #predn:   x1 y1 x2 y2 x3 y3 x4 y4 conf cls   all base_ori
                 #labelsn: label x1 y1 x2 y2 x3 y3 x4 y4 base_ori&depth_ok
                 correct = process_batch(predn, labelsn, iouv)
+                crm.update(predn, labelsn, ori_shape[0])
                 # if(sum(lengGt[hlotGT_idx,0:1])>1):
                 #     print("predn: ",predn)
                 #     print("labelsn :",labelsn)
@@ -351,6 +354,7 @@ def run(
 
         callbacks.run('on_val_batch_end', batch_i, im, targets, paths, shapes, preds)
     print("loss:",(loss.cpu() / len(dataloader)).tolist())
+    crm.get_result()
     # Compute metrics
     stats = [torch.cat(x, 0).cpu().numpy() for x in zip(*stats)]  # to numpy
     if len(stats) and stats[0].any():
