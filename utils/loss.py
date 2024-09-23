@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 import shapely
 from shapely.geometry import Polygon, MultiPoint
-from utils.metrics import bbox_iou
+from utils.metrics import bbox_iou, bbox_iou_cat_in_lot
 from utils.torch_utils import de_parallel
 from utils.general import default_vlot_depth, default_hlot_depth, default_hlot_min_width, base_image_size
 
@@ -179,11 +179,19 @@ class ComputeLoss:
                 Bitst = Btbox[i][:,-1:]
                 Btbox[i] = Btbox[i][:,0:-1]
                 
-                #顺序不能倒过来，必须先设置true,再设置false
-                Aitst[Aitst==True] = 5
-                Aitst[Aitst==False] = 1
-                Bitst[Bitst==True] = 5
-                Bitst[Bitst==False] = 1
+                if (hyp["ALL_PARKING_LOT_SAME_WEIGHT"]):
+                    #顺序不能倒过来，必须先设置true,再设置false
+                    Aitst[Aitst==True] = 5
+                    Aitst[Aitst==False] = 1
+                    Bitst[Bitst==True] = 5
+                    Bitst[Bitst==False] = 1
+                else:
+                    Aitst[Aitst>0.25] = 1
+                    Aitst[Aitst>0] *= 5
+                    Aitst += 1
+                    Bitst[Bitst>0.25] = 1
+                    Bitst[Bitst>0] *= 5
+                    Bitst += 1
                 
                 Aitst=torch.concat((Aitst,Aitst),axis=1)
                 Bitst=torch.concat((Bitst,Bitst),axis=1)
@@ -303,7 +311,10 @@ class ComputeLoss:
             
             temp_targets[:,8:9] = torch.cos(thetaAD)*lengGt + temp_targets[:,2:3]
             temp_targets[:,9:10] = torch.sin(thetaAD)*lengGt + temp_targets[:,3:4]
-            m = map(lambda lot : not self.polycar.disjoint(Polygon(lot[2:].reshape(4,2)).convex_hull), temp_targets.cpu() )
+            if (hyp["ALL_PARKING_LOT_SAME_WEIGHT"]):
+                m = map(lambda lot : not self.polycar.disjoint(Polygon(lot[2:].reshape(4,2)).convex_hull), temp_targets.cpu() )
+            else:
+                m = map(lambda lot : bbox_iou_cat_in_lot(self.polycar, Polygon(lot[2:].reshape(4,2)).convex_hull ), temp_targets.cpu() )
             m = list(m)
         else:
             m=[]  
@@ -391,7 +402,7 @@ class ComputeLoss:
                 j = torch.max(r, 1 / r).max(2)[0] > -1000000000
                 t = t[j]
                     
-                if hyp["USE_THREE_POSITIVE_SAMPLE"]:
+                if hyp["USE_THREE_POSITIVE_SAMPLE"]:#这个策略暂时还没有处理，考虑所泊库位的权重情况，所以目前不要使用这个策略
                     Agxy = t[:, 2:4]  # grid xy
                     Bgxy = t[:, 9:11]  # grid xy
                     Agxi = gain[[2, 3]] - Agxy  # inverse

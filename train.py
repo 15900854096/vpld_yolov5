@@ -39,6 +39,8 @@ import yaml
 from torch.optim import lr_scheduler
 from tqdm import tqdm
 
+from time import perf_counter_ns
+
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # YOLOv5 root directory
 if str(ROOT) not in sys.path:
@@ -299,9 +301,15 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             pbar = tqdm(pbar, total=nb, bar_format=TQDM_BAR_FORMAT)  # progress bar
         optimizer.zero_grad()
         mem=0
+        if (epoch<=1):
+            dataload_time, forward_time, cal_loss_time, backforward_time = 0, 0, 0, 0
+            load_start_time = perf_counter_ns()
         for i, (imgs, targets, paths, _) in pbar:  # batch -------------------------------------------------------------
             #batch_draw_save(imgs,targets)
             #continue 
+            if (epoch<=1):
+                load_end_time = perf_counter_ns()
+                dataload_time = dataload_time + load_end_time - load_start_time
             callbacks.run('on_train_batch_start')
             ni = i + nb * epoch  # number integrated batches (since train start)
             imgs = imgs.to(device, non_blocking=True).float() / 255  # uint8 to float32, 0-255 to 0.0-1.0
@@ -327,15 +335,30 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
 
             # Forward
             with torch.cuda.amp.autocast(amp):
+                if (epoch<=1):
+                    start = perf_counter_ns()
                 pred = model(imgs)  # forward
+                if (epoch<=1):
+                    end = perf_counter_ns()
+                    forward_time = forward_time + end-start
+                    start = perf_counter_ns()
                 loss, loss_items = compute_loss(pred, targets.to(device))  # loss scaled by batch_size
+                if (epoch<=1):
+                    end = perf_counter_ns()
+                    cal_loss_time = cal_loss_time + end-start
+                    
                 if RANK != -1:
                     loss *= WORLD_SIZE  # gradient averaged between devices in DDP mode
                 if opt.quad:
                     loss *= 4.
 
             # Backward
+            if (epoch<=1):
+                start = perf_counter_ns()
             scaler.scale(loss).backward()
+            if (epoch<=1):
+                end = perf_counter_ns()
+                backforward_time = backforward_time + end-start
 
             # Optimize - https://pytorch.org/docs/master/notes/amp_examples.html
             if ni - last_opt_step >= accumulate:
@@ -358,7 +381,14 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 callbacks.run('on_train_batch_end', model, ni, imgs, targets, paths, list(mloss))
                 if callbacks.stop_training:
                     return
+            if (epoch<=1):
+                load_start_time = perf_counter_ns()    
             # end batch ------------------------------------------------------------------------------------------------
+        if (epoch<=1):
+            print("dataload_time:     %.4f s", dataload_time/1000000000.0)
+            print("forward_time:      %.4f s", forward_time/1000000000.0)
+            print("cal_loss_time:     %.4f s", cal_loss_time/1000000000.0)
+            print("backforward_time:  %.4f s", backforward_time/1000000000.0)
         txtlog.writelines(('\n' + '%11s' * 2 + '%11.4g' * 5) % (f'{epoch}/{epochs - 1}', mem, *mloss, targets.shape[0], imgs.shape[-1]))
         # Scheduler
         lr = [x['lr'] for x in optimizer.param_groups]  # for loggers

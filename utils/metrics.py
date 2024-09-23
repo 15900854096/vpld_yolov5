@@ -380,6 +380,21 @@ def bbox_iou_eval(box1, box2):
             iou = 0
     return iou
 
+#统计自车在库位内部的面积占自车面积的比例，即自车有多少占比已经入库了
+def bbox_iou_cat_in_lot(poly1, poly2):
+    #box1 must be car Polygon
+    #box2 must be lot Polygon
+    if not poly1.intersects(poly2):  # 如果两四边形不相交
+        iou = 0
+    else:
+        try:
+            inter_area = poly1.intersection(poly2).area  # 相交面积
+            iou = float(inter_area) / poly1.area
+        except shapely.geos.TopologicalError:
+            print('shapely.geos.TopologicalError occured, iou set to 0')
+            iou = 0
+    return iou
+
 def box_iou_poly(box1, box2, eps=1e-7):
     # https://github.com/pytorch/vision/blob/master/torchvision/ops/boxes.py
     """
@@ -406,27 +421,34 @@ def box_iou_poly(box1, box2, eps=1e-7):
     return ioumat        
 
 class Cal_R_Matrix:
-    def __init__(self,imgsz):
-        self.A_x_err = 0
-        self.A_y_err = 0
-        self.B_x_err = 0
-        self.B_y_err = 0
-        self.AD_theta_err = 0
-        self.BC_theta_err = 0
+    def __init__(self,imgsz,device):
+        self.device = device
+        self.A_x_err = []
+        self.A_y_err = []
+        self.B_x_err = []
+        self.B_y_err = []
+        self.AD_theta_err = []
+        self.BC_theta_err = []
         self.cnt = 0
         self.imgsz = imgsz
         self.polycar = np.array([270/640.0, 193/640.0, 370/640.0, 193/640.0, 370/640.0, 445/640.0, 270/640.0, 445/640.0]).reshape(4, 2)  # 四边形二维坐标表示
         self.polycar = Polygon(self.polycar).convex_hull
+
     def reset(self):
-        self.A_x_err = 0
-        self.A_y_err = 0
-        self.B_x_err = 0
-        self.B_y_err = 0
-        self.AD_theta_err = 0
-        self.BC_theta_err = 0
+        self.A_x_err = []
+        self.A_y_err = []
+        self.B_x_err = []
+        self.B_y_err = []
+        self.AD_theta_err = []
+        self.BC_theta_err = []
         self.cnt = 0
-    def update(self, detections, labels, sz, iou_thres=0.9):
+    
+    def get_real_theta(self, delta):
         from utils.general import PI
+        delta = abs(delta)
+        return delta if delta<PI else 2*PI-delta
+    
+    def update(self, detections, labels, sz, iou_thres=0.9):
         boxes_labels = labels[:, 1:] / sz 
         boxes_detections = detections[:, :8] / sz
         
@@ -441,27 +463,28 @@ class Cal_R_Matrix:
                     ): 
                     #  0  1  2  3  4  5  6  7
                     # x1 y1 x2 y2 x3 y3 x4 y4
-                    label_AD_theta = torch.atan2(boxes_labels[i][7]-boxes_labels[i][1],boxes_labels[i][6]-boxes_labels[i][0])
-                    label_BC_theta = torch.atan2(boxes_labels[i][5]-boxes_labels[i][3],boxes_labels[i][4]-boxes_labels[i][2])
+                    label_AD_theta = torch.atan2(boxes_labels[i][7]-boxes_labels[i][1], boxes_labels[i][6]-boxes_labels[i][0])
+                    label_BC_theta = torch.atan2(boxes_labels[i][5]-boxes_labels[i][3], boxes_labels[i][4]-boxes_labels[i][2])
                     
-                    detection_AD_theta = torch.atan2(boxes_detections[j][7]-boxes_detections[j][1],boxes_detections[j][6]-boxes_detections[j][0])
-                    detection_BC_theta = torch.atan2(boxes_detections[j][5]-boxes_detections[j][3],boxes_detections[j][4]-boxes_detections[j][2])
+                    detection_AD_theta = torch.atan2(boxes_detections[j][7]-boxes_detections[j][1], boxes_detections[j][6]-boxes_detections[j][0])
+                    detection_BC_theta = torch.atan2(boxes_detections[j][5]-boxes_detections[j][3], boxes_detections[j][4]-boxes_detections[j][2])
                     
-                    self.A_x_err += abs(boxes_labels[i][0] - boxes_detections[j][0])
-                    self.A_y_err += abs(boxes_labels[i][1] - boxes_detections[j][1])
-                    self.B_x_err += abs(boxes_labels[i][2] - boxes_detections[j][2])
-                    self.B_y_err += abs(boxes_labels[i][3] - boxes_detections[j][3])
-                    self.AD_theta_err += abs(label_AD_theta - detection_AD_theta) if abs(label_AD_theta - detection_AD_theta)<PI else 2*PI-abs(label_AD_theta - detection_AD_theta)
-                    self.BC_theta_err += abs(label_BC_theta - detection_BC_theta) if abs(label_BC_theta - detection_BC_theta)<PI else 2*PI-abs(label_BC_theta - detection_BC_theta)
+                    self.A_x_err.append( abs(boxes_labels[i][0] - boxes_detections[j][0]) * self.imgsz )
+                    self.A_y_err.append( abs(boxes_labels[i][1] - boxes_detections[j][1]) * self.imgsz )
+                    self.B_x_err.append( abs(boxes_labels[i][2] - boxes_detections[j][2]) * self.imgsz )
+                    self.B_y_err.append( abs(boxes_labels[i][3] - boxes_detections[j][3]) * self.imgsz )
+                    self.AD_theta_err.append( self.get_real_theta(label_AD_theta - detection_AD_theta) )
+                    self.BC_theta_err.append( self.get_real_theta(label_BC_theta - detection_BC_theta) )
                     self.cnt+=1
+
     def get_result(self):
         if(self.cnt):
             print("cnt: ", self.cnt)
-            print("A_x_err: ", self.A_x_err / self.cnt * self.imgsz)
-            print("A_y_err: ", self.A_y_err / self.cnt * self.imgsz)
-            print("B_x_err: ", self.B_x_err / self.cnt * self.imgsz)
-            print("B_y_err: ", self.B_y_err / self.cnt * self.imgsz)
-            print("AD_theta_err: ", self.AD_theta_err / self.cnt)
-            print("BC_theta_err: ", self.BC_theta_err / self.cnt)
+            print("A_x_err: ",      torch.mean(torch.stack(self.A_x_err)),      torch.var(torch.stack(self.A_x_err)))
+            print("A_y_err: ",      torch.mean(torch.stack(self.A_y_err)),      torch.var(torch.stack(self.A_y_err)))
+            print("B_x_err: ",      torch.mean(torch.stack(self.B_x_err)),      torch.var(torch.stack(self.B_x_err)))
+            print("B_y_err: ",      torch.mean(torch.stack(self.B_y_err)),      torch.var(torch.stack(self.B_y_err)))
+            print("AD_theta_err: ", torch.mean(torch.stack(self.AD_theta_err)), torch.var(torch.stack(self.AD_theta_err)))
+            print("BC_theta_err: ", torch.mean(torch.stack(self.BC_theta_err)), torch.var(torch.stack(self.BC_theta_err)))
         else:
             print("all lot can't match")
