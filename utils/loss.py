@@ -15,6 +15,7 @@ from pathlib import Path
 import numpy as np
 import shapely
 from shapely.geometry import Polygon, MultiPoint
+from time import perf_counter_ns
 from utils.metrics import bbox_iou, bbox_iou_cat_in_lot
 from utils.torch_utils import de_parallel
 from utils.general import default_vlot_depth, default_hlot_depth, default_hlot_min_width, base_image_size
@@ -112,6 +113,7 @@ class ComputeLoss:
     # Compute losses
     def __init__(self, model, autobalance=False):
         device = next(model.parameters()).device  # get model device
+        print("!!!!!!!!!!!!!!!!!!!!!!!!",device)
         h = model.hyp  # hyperparameters
 
         # Define criteria
@@ -146,16 +148,26 @@ class ComputeLoss:
         
         self.polycar = np.array([270/640.0, 193/640.0, 370/640.0, 193/640.0, 370/640.0, 445/640.0, 270/640.0, 445/640.0]).reshape(4, 2)  # 四边形二维坐标表示
         self.polycar = Polygon(self.polycar).convex_hull
+        self.consum_time=[0,0,0]
 
-    def __call__(self, p, targets):  # predictions, targets
+    def __call__(self, p, targets, i_iter=0, need_cal=False):  # predictions, targets
+        if(i_iter==0 and need_cal):
+            self.consum_time=[0,0,0]
         lcls = torch.zeros(1, device=self.device)  # class loss
         lbox = torch.zeros(1, device=self.device)  # box loss
         lobj = torch.zeros(1, device=self.device)  # object loss
         #tcls, tbox, indices, anchors = self.build_targets(p, targets)  # targets
+        if (need_cal):
+            start = perf_counter_ns()
         tcls, Atbox, Aindices, Btbox, Bindices, anchors = self.build_targets(p, targets)
+        if (need_cal):
+            end = perf_counter_ns()
+            self.consum_time[0] += end-start
         random.seed(time.time_ns()%(2**32 - 1))
         # Losses
         for i, pi in enumerate(p):  # layer index, layer predictions
+            rowlist = range(pi.shape[2]-1)
+            collist = range(pi.shape[3]-1)
             Ab, Aa, Agj, Agi = Aindices[i]  # image, anchor, gridy, gridx
             Bb, Ba, Bgj, Bgi = Bindices[i]  # image, anchor, gridy, gridx
 
@@ -168,6 +180,8 @@ class ComputeLoss:
             na = Ab.shape[0]
             nb = Bb.shape[0]
             n = na + nb  # number of targets
+            if (need_cal):
+                start = perf_counter_ns()
             if n:
                 #                                    0  1  2   3    4   5   6    7    8  9  10  11   12  13  14   15   16   17
                 #target-subset of predictions #pred: Ax Ay Ac1 As1 Ac2 As2 Alen Aobj  Bx By Bc1 Bs1  Bc2 Bs2 Blen Bobj cls1 cls2
@@ -256,29 +270,53 @@ class ComputeLoss:
                     t = torch.full_like(pcls, self.cn, device=self.device)  # targets
                     t[range(nb), tcls[i]] = self.cp
                     lcls += self.MSEmean(pcls.sigmoid(), t) #self.BCEcls(pcls, t)  # BCE
-
+                    
+            if (need_cal):
+                end = perf_counter_ns()
+                self.consum_time[1] += end-start
+                start = perf_counter_ns()
+            
             if na:
-                Aselect = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)
-                Aselect[Ab, Aa, Agj, Agi] = 1
-                for idx, v in enumerate(Ab):
-                    list1 = [random.randint(0,pi.shape[2]-1) for j in range(int(hyp["NEG_POS_RATE"]))]
-                    list2 = [random.randint(0,pi.shape[3]-1) for j in range(int(hyp["NEG_POS_RATE"]))]
-                    Aselect[v,Aa[idx],list1,list2] = 1  
+                Aselect = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device) #NCHW
+                # for idx, v in enumerate(Ab): #一个库位一个库位的去遍历
+                #     list1 = random.choices(rowlist, k = hyp["NEG_POS_RATE"])
+                #     list2 = random.choices(collist, k = hyp["NEG_POS_RATE"])
+                #     Aselect[v,Aa[idx],list1,list2] = 1  
+                for i_ in torch.unique(Ab):  #一张图像一张图像的去遍历 
+                    idxlist = torch.nonzero(Ab==i_)
+                    image_idx = Ab[idxlist.squeeze()]
+                    archor_idx = Aa[idxlist.squeeze()]
+                    list1 = random.choices(rowlist, k = idxlist.shape[0] * hyp["NEG_POS_RATE"])
+                    list2 = random.choices(collist, k = idxlist.shape[0] * hyp["NEG_POS_RATE"])
+                    Aselect[image_idx.repeat(hyp["NEG_POS_RATE"]), archor_idx.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1
+                Aselect[Ab, Aa, Agj, Agi] = 1        
             else:
                 Aselect = torch.ones(pi.shape[:4], dtype=pi.dtype, device=self.device)
             
             if nb:
                 Bselect = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)
-                Bselect[Bb, Ba, Bgj, Bgi] = 1
-                for idx, v in enumerate(Bb):
-                    list1 = [random.randint(0,pi.shape[2]-1) for j in range(int(hyp["NEG_POS_RATE"]))]
-                    list2 = [random.randint(0,pi.shape[3]-1) for j in range(int(hyp["NEG_POS_RATE"]))]
-                    Bselect[v,Ba[idx],list1,list2] = 1  
+                # for idx, v in enumerate(Bb):
+                #     list1 = random.choices(rowlist, k = hyp["NEG_POS_RATE"])
+                #     list2 = random.choices(collist, k = hyp["NEG_POS_RATE"])
+                #     Bselect[v,Ba[idx],list1,list2] = 1  
+                for i_ in torch.unique(Bb):
+                    idxlist = torch.nonzero(Bb==i_) 
+                    image_idx = Bb[idxlist.squeeze()]
+                    archor_idx = Ba[idxlist.squeeze()]
+                    list1 = random.choices(rowlist, k = idxlist.shape[0] * hyp["NEG_POS_RATE"])
+                    list2 = random.choices(collist, k = idxlist.shape[0] * hyp["NEG_POS_RATE"])
+                    Bselect[image_idx.repeat(hyp["NEG_POS_RATE"]), archor_idx.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1   
+                Bselect[Bb, Ba, Bgj, Bgi] = 1     
+                    
             else:
                 Bselect = torch.ones(pi.shape[:4], dtype=pi.dtype, device=self.device)
             
             Aobji = torch.sum(self.MSEobj(pi[..., 7].sigmoid(), Atobj) * Aselect) / torch.sum(Aselect)
             Bobji = torch.sum(self.MSEobj(pi[..., 15].sigmoid(), Btobj) * Bselect) / torch.sum(Bselect)
+            
+            if (need_cal):
+                end = perf_counter_ns()
+                self.consum_time[2] += end-start
             
             lobj += (Aobji+Bobji) * self.balance[i]  # obj loss
             if self.autobalance:
@@ -293,6 +331,9 @@ class ComputeLoss:
 
         return (lbox + lobj + lcls) * bs, torch.cat((lbox, lobj, lcls)).detach()
     
+    def get_cosume_time(self):
+        print("cal loss use time disturb: ", [ele/1000000000.0 for ele in self.consum_time])
+        
     def whether_lot_veh_intersects(self, targets):
         #                        A       B       C     D
         #           0      1   2   3   4   5   6   7  8  9

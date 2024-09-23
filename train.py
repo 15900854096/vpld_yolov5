@@ -342,7 +342,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                     end = perf_counter_ns()
                     forward_time = forward_time + end-start
                     start = perf_counter_ns()
-                loss, loss_items = compute_loss(pred, targets.to(device))  # loss scaled by batch_size
+                loss, loss_items = compute_loss(pred, targets.to(device), i, epoch<=1)  # loss scaled by batch_size
                 if (epoch<=1):
                     end = perf_counter_ns()
                     cal_loss_time = cal_loss_time + end-start
@@ -389,6 +389,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             print("forward_time:      %.4f s", forward_time/1000000000.0)
             print("cal_loss_time:     %.4f s", cal_loss_time/1000000000.0)
             print("backforward_time:  %.4f s", backforward_time/1000000000.0)
+            compute_loss.get_cosume_time()
+            
         txtlog.writelines(('\n' + '%11s' * 2 + '%11.4g' * 5) % (f'{epoch}/{epochs - 1}', mem, *mloss, targets.shape[0], imgs.shape[-1]))
         # Scheduler
         lr = [x['lr'] for x in optimizer.param_groups]  # for loggers
