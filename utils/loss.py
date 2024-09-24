@@ -148,11 +148,13 @@ class ComputeLoss:
         
         self.polycar = np.array([270/640.0, 193/640.0, 370/640.0, 193/640.0, 370/640.0, 445/640.0, 270/640.0, 445/640.0]).reshape(4, 2)  # 四边形二维坐标表示
         self.polycar = Polygon(self.polycar).convex_hull
-        self.consum_time=[0,0,0]
+        self.consum_time=[0,0,0,0]
 
     def __call__(self, p, targets, i_iter=0, need_cal=False):  # predictions, targets
         if(i_iter==0 and need_cal):
-            self.consum_time=[0,0,0]
+            self.consum_time=[0,0,0,0]
+        if (need_cal):
+            function_start_t = perf_counter_ns()
         lcls = torch.zeros(1, device=self.device)  # class loss
         lbox = torch.zeros(1, device=self.device)  # box loss
         lobj = torch.zeros(1, device=self.device)  # object loss
@@ -282,13 +284,16 @@ class ComputeLoss:
                 #     list1 = random.choices(rowlist, k = hyp["NEG_POS_RATE"])
                 #     list2 = random.choices(collist, k = hyp["NEG_POS_RATE"])
                 #     Aselect[v,Aa[idx],list1,list2] = 1  
-                for i_ in torch.unique(Ab):  #一张图像一张图像的去遍历 
-                    idxlist = torch.nonzero(Ab==i_)
-                    image_idx = Ab[idxlist.squeeze()]
-                    archor_idx = Aa[idxlist.squeeze()]
-                    list1 = random.choices(rowlist, k = idxlist.shape[0] * hyp["NEG_POS_RATE"])
-                    list2 = random.choices(collist, k = idxlist.shape[0] * hyp["NEG_POS_RATE"])
-                    Aselect[image_idx.repeat(hyp["NEG_POS_RATE"]), archor_idx.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1
+                # for i_ in torch.unique(Ab):  #一张图像一张图像的去遍历 
+                #     idxlist = torch.nonzero(Ab==i_)
+                #     image_idx = Ab[idxlist.squeeze()]
+                #     archor_idx = Aa[idxlist.squeeze()]
+                #     list1 = random.choices(rowlist, k = idxlist.shape[0] * hyp["NEG_POS_RATE"])
+                #     list2 = random.choices(collist, k = idxlist.shape[0] * hyp["NEG_POS_RATE"])
+                #     Aselect[image_idx.repeat(hyp["NEG_POS_RATE"]), archor_idx.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1
+                list1 = random.choices(rowlist, k = na * hyp["NEG_POS_RATE"])
+                list2 = random.choices(collist, k = na * hyp["NEG_POS_RATE"])
+                Aselect[Ab.repeat(hyp["NEG_POS_RATE"]), Aa.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1
                 Aselect[Ab, Aa, Agj, Agi] = 1        
             else:
                 Aselect = torch.ones(pi.shape[:4], dtype=pi.dtype, device=self.device)
@@ -299,14 +304,17 @@ class ComputeLoss:
                 #     list1 = random.choices(rowlist, k = hyp["NEG_POS_RATE"])
                 #     list2 = random.choices(collist, k = hyp["NEG_POS_RATE"])
                 #     Bselect[v,Ba[idx],list1,list2] = 1  
-                for i_ in torch.unique(Bb):
-                    idxlist = torch.nonzero(Bb==i_) 
-                    image_idx = Bb[idxlist.squeeze()]
-                    archor_idx = Ba[idxlist.squeeze()]
-                    list1 = random.choices(rowlist, k = idxlist.shape[0] * hyp["NEG_POS_RATE"])
-                    list2 = random.choices(collist, k = idxlist.shape[0] * hyp["NEG_POS_RATE"])
-                    Bselect[image_idx.repeat(hyp["NEG_POS_RATE"]), archor_idx.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1   
-                Bselect[Bb, Ba, Bgj, Bgi] = 1     
+                # for i_ in torch.unique(Bb):
+                #     idxlist = torch.nonzero(Bb==i_) 
+                #     image_idx = Bb[idxlist.squeeze()]
+                #     archor_idx = Ba[idxlist.squeeze()]
+                #     list1 = random.choices(rowlist, k = idxlist.shape[0] * hyp["NEG_POS_RATE"])
+                #     list2 = random.choices(collist, k = idxlist.shape[0] * hyp["NEG_POS_RATE"])
+                #     Bselect[image_idx.repeat(hyp["NEG_POS_RATE"]), archor_idx.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1   
+                Bselect[Bb, Ba, Bgj, Bgi] = 1
+                list1 = random.choices(rowlist, k = nb * hyp["NEG_POS_RATE"])
+                list2 = random.choices(collist, k = nb * hyp["NEG_POS_RATE"])
+                Bselect[Bb.repeat(hyp["NEG_POS_RATE"]), Ba.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1 
                     
             else:
                 Bselect = torch.ones(pi.shape[:4], dtype=pi.dtype, device=self.device)
@@ -329,6 +337,10 @@ class ComputeLoss:
         lcls *= self.hyp['cls']
         bs = Atobj.shape[0]+Btobj.shape[0]  # batch size
 
+        if (need_cal):
+            function_end_t = perf_counter_ns()
+            self.consum_time[3] += function_end_t - function_start_t
+            
         return (lbox + lobj + lcls) * bs, torch.cat((lbox, lobj, lcls)).detach()
     
     def get_cosume_time(self):

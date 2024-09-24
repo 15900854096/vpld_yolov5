@@ -385,10 +385,10 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 load_start_time = perf_counter_ns()    
             # end batch ------------------------------------------------------------------------------------------------
         if (epoch<=1):
-            print("dataload_time:     %.4f s", dataload_time/1000000000.0)
-            print("forward_time:      %.4f s", forward_time/1000000000.0)
-            print("cal_loss_time:     %.4f s", cal_loss_time/1000000000.0)
-            print("backforward_time:  %.4f s", backforward_time/1000000000.0)
+            print("dataload_time:     %.4f s"%(dataload_time/1000000000.0))
+            print("forward_time:      %.4f s"%(forward_time/1000000000.0))
+            print("cal_loss_time:     %.4f s"%(cal_loss_time/1000000000.0))
+            print("backforward_time:  %.4f s"%(backforward_time/1000000000.0))
             compute_loss.get_cosume_time()
             
         txtlog.writelines(('\n' + '%11s' * 2 + '%11.4g' * 5) % (f'{epoch}/{epochs - 1}', mem, *mloss, targets.shape[0], imgs.shape[-1]))

@@ -1,5 +1,5 @@
 python ./export.py \
---weights ./runs/train/exp/weights/best.pt \
+--weights ./runs/train/exp99/weights/best.pt \
 --device cpu \
 --imgsz 640 \
 --include onnx \
