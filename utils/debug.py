@@ -44,6 +44,7 @@ def draw_save(img,labels,address):
 
 vpldcnt=0
 fscnt=0
+sscnt=0
 def batch_draw_save(imgs,labelses):
     imgs = np.array(imgs)
     labelses = np.array(labelses)
@@ -77,3 +78,30 @@ def batch_draw_mask_save(imgs, masks):
         fscnt+=1
         if(fscnt>200):
             sys.exit()                  
+
+
+def batch_draw_arr_save(imgs,arress):
+    imgs = np.array(imgs)
+    n, c, h, w = imgs.shape
+    arress = np.array(arress)
+    global sscnt
+    for  i,img in enumerate(imgs):
+        img_ = img.copy()
+        img_ = img_.transpose((1, 2, 0))[:,:,::-1]
+        img_ = np.ascontiguousarray(img_)
+        arrs = arress[arress[:,0] == i]
+        
+        for arr in arrs:
+            p1 = (round(float(arr[2]*w)) , round(float(arr[3]*h)))
+            p2 = (round(float(arr[4]*w)) , round(float(arr[5]*h)))
+            
+            cv.arrowedLine(img_, p1, p2, point_color, thickness, lineType)
+            if(arr[6]!=-1):
+                p3 = (round(float(arr[6]*w)) , round(float(arr[7]*h)))
+                cv.arrowedLine(img_, p2, p3, point_color, thickness, lineType)      
+                
+        cv2.imwrite(r"./xuqing/flipud/ss_%06d.jpg"%sscnt, img_)
+        print("save img to ",r"./xuqing/flipud/ss_%06d.jpg"%sscnt)
+        sscnt+=1
+        if(sscnt>100):
+            sys.exit()

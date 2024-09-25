@@ -209,7 +209,7 @@ def run(
     pbar = tqdm(dataloader, desc=s, bar_format=TQDM_BAR_FORMAT)  # progress bar
     fs_cal = StreamSegMetrics(hyp["fs_num_class"])
     fs_cal.reset()
-    for batch_i, (im, targets, paths, shapes, masks) in enumerate(pbar):
+    for batch_i, (im, targets, paths, shapes, masks, arrs) in enumerate(pbar):
         callbacks.run('on_val_batch_start')
         masks = masks.to(device, non_blocking=True)
         with dt[0]:

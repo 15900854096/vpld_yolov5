@@ -52,6 +52,10 @@ fs_weight: 18
 fs_num_class: 10
 fs_use_focalloss: 0
 
+task_ss: 1
+ss_weight: 1
+ss_num_class: 4
+
 holes_rate: 0
 
 CAREABOUT_LOT_TYPE: 0 #是否需要不关注库位类型，来测试库位的mAP

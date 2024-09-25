@@ -440,6 +440,9 @@ def img2mask_paths(img_paths):
     sa, sb = f'{os.sep}images{os.sep}', f'{os.sep}labels_mask{os.sep}'
     return [sb.join(x.rsplit(sa, 1)).rsplit('.', 1)[0] + '.png' for x in img_paths]
 
+def img2arr_paths(img_paths):
+    sa, sb = f'{os.sep}images{os.sep}', f'{os.sep}labels_arr{os.sep}'
+    return [sb.join(x.rsplit(sa, 1)).rsplit('.', 1)[0] + '.txt' for x in img_paths]
 
 class LoadImagesAndLabels(Dataset):
     # YOLOv5 train_loader/val_loader, loads images and labels for training and validation
@@ -498,12 +501,13 @@ class LoadImagesAndLabels(Dataset):
         # Check cache
         self.mask_files = img2mask_paths(self.im_files)  # labels
         self.label_files = img2label_paths(self.im_files)  # labels
+        self.label_arrs = img2arr_paths(self.im_files)
            
         cache_path = (p if p.is_file() else Path(self.label_files[0]).parent).with_suffix('.cache')
         try:
             cache, exists = np.load(cache_path, allow_pickle=True).item(), True  # load dict
             assert cache['version'] == self.cache_version  # matches current version
-            assert cache['hash'] == get_hash(self.label_files + self.im_files + self.mask_files)  # identical hash
+            assert cache['hash'] == get_hash(self.label_files + self.im_files + self.mask_files + self.label_arrs)  # identical hash
         except Exception:
             cache, exists = self.cache_labels(cache_path, prefix), False  # run cache ops
 
@@ -526,6 +530,7 @@ class LoadImagesAndLabels(Dataset):
         self.im_files = list(cache.keys())  # update
         self.label_files = img2label_paths(cache.keys())  # update
         self.mask_files = img2mask_paths(cache.keys())
+        self.label_arrs = img2arr_paths(cache.keys())
         
         # Filter images
         if min_items:#如果目标数量小于min_items，则对应的图像&GT数据会被丢弃，一般都不打开此过滤选项
@@ -534,6 +539,8 @@ class LoadImagesAndLabels(Dataset):
             self.im_files = [self.im_files[i] for i in include]
             self.label_files = [self.label_files[i] for i in include]
             self.mask_files = [self.mask_files[i] for i in include]
+            self.label_arrs = [self.label_arrs[i] for i in include]
+            
             self.labels = [self.labels[i] for i in include]
             self.segments = [self.segments[i] for i in include]
             self.shapes = self.shapes[include]  # wh
@@ -568,6 +575,7 @@ class LoadImagesAndLabels(Dataset):
             self.im_files = [self.im_files[i] for i in irect]
             self.mask_files = [self.mask_files[i] for i in irect]
             self.label_files = [self.label_files[i] for i in irect]
+            self.label_arrs = [self.label_arrs[i] for i in irect]
             self.labels = [self.labels[i] for i in irect]
             self.segments = [self.segments[i] for i in irect]
             self.shapes = s[irect]  # wh
@@ -629,7 +637,7 @@ class LoadImagesAndLabels(Dataset):
         nm, nf, ne, nc, msgs = 0, 0, 0, 0, []  # number missing, found, empty, corrupt, messages
         desc = f'{prefix}Scanning {path.parent / path.stem}...'
         with Pool(NUM_THREADS) as pool:
-            pbar = tqdm(pool.imap(verify_image_label, zip(self.im_files, self.label_files, repeat(prefix))),
+            pbar = tqdm(pool.imap(verify_image_label, zip(self.im_files, self.label_files, self.mask_files, self.label_arrs, repeat(prefix))),
                         desc=desc,
                         total=len(self.im_files),
                         bar_format=TQDM_BAR_FORMAT)
@@ -691,6 +699,11 @@ class LoadImagesAndLabels(Dataset):
                 mask, _, _ = self.load_mask(index)
             else:
                 mask = np.zeros((h, w))
+                
+            if (self.hyp["task_ss"]):
+                arrs = self.load_arr(index)
+            else:
+                arrs = np.zeros((0, 7)) 
         
             # Letterbox
             shape = self.batch_shapes[self.batch[index]] if self.rect else self.img_size  # final letterboxed shape
@@ -811,6 +824,11 @@ class LoadImagesAndLabels(Dataset):
         if nl:
             labels_out[:, 1:] = torch.from_numpy(labels)
 
+        narr = len(arrs)
+        arrs_out = torch.zeros((narr, 8))# img_id cls x1 y1 x2 y2 x3 y3
+        if narr:
+            arrs_out[:, 1:] = torch.from_numpy(arrs)
+            
         # Convert
         img = img.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
         img = np.ascontiguousarray(img)
@@ -818,7 +836,7 @@ class LoadImagesAndLabels(Dataset):
         #mask = mask[np.newaxis, :, :]  #(h,w)->(1,h,w)  mask chanel must equal 1
         mask = np.ascontiguousarray(mask)
         
-        return torch.from_numpy(img), labels_out, self.im_files[index], shapes, torch.from_numpy(mask)
+        return torch.from_numpy(img), labels_out, self.im_files[index], shapes, torch.from_numpy(mask), arrs_out
 
     def load_image(self, i):
         # Loads 1 image from dataset index 'i', returns (im, original hw, resized hw)
@@ -848,7 +866,23 @@ class LoadImagesAndLabels(Dataset):
             interp = cv2.INTER_LINEAR if (self.augment or r > 1) else cv2.INTER_AREA
             im = cv2.resize(im, (math.ceil(w0 * r), math.ceil(h0 * r)), interpolation=interp)
         return im, (h0, w0), im.shape[:2]  # im, hw_original, hw_resized
-    
+
+    def load_arr(self, i):
+        if os.path.isfile(self.label_arrs[i]):
+            with open(self.label_arrs[i]) as f:
+                arr = [x.split() for x in f.read().strip().splitlines() if len(x)]
+                arr = np.array(arr, dtype=np.float32)
+            arrn = len(arr)
+            if arrn:
+                _, i = np.unique(arr, axis=0, return_index=True)
+                arr = arr[i]  # remove duplicates  
+            else:
+                arr = np.zeros((0, 7), dtype=np.float32)
+        else:
+            arr = np.zeros((0, 7), dtype=np.float32)
+        return arr
+            
+        
     def cache_images_to_disk(self, i):
         # Saves an image as an *.npy file for faster loading
         f = self.npy_files[i]
@@ -992,10 +1026,12 @@ class LoadImagesAndLabels(Dataset):
 
     @staticmethod
     def collate_fn(batch):
-        im, label, path, shapes, mask = zip(*batch)  # transposed
+        im, label, path, shapes, mask, arr = zip(*batch)  # transposed
         for i, lb in enumerate(label):
             lb[:, 0] = i  # add target image index for build_targets()
-        return torch.stack(im, 0), torch.cat(label, 0), path, shapes, torch.stack(mask, 0) #torch.cat(label, 0) concat at dims=0
+        for i, a in enumerate(arr):
+            a[:, 0] = i  # add target image index for build_targets()
+        return torch.stack(im, 0), torch.cat(label, 0), path, shapes, torch.stack(mask, 0), torch.cat(arr, 0) #torch.cat(label, 0) concat at dims=0
 
     @staticmethod
     def collate_fn4(batch):
@@ -1093,10 +1129,10 @@ def autosplit(path=DATASETS_DIR / 'coco128/images', weights=(0.9, 0.1, 0.0), ann
             with open(path.parent / txt[i], 'a') as f:
                 f.write(f'./{img.relative_to(path.parent).as_posix()}' + '\n')  # add image to txt file
 
-
+#除了库位的GT，其他的数据都没有缓存，而是在__getitem__函数中重新读取加载
 def verify_image_label(args):
     # Verify one image-label pair
-    im_file, lb_file, prefix = args
+    im_file, lb_file, mask_file, arr_file, prefix = args
     nm, nf, ne, nc, msg, segments = 0, 0, 0, 0, '', []  # number (missing, found, empty, corrupt), message, segments
     try:
         # verify images
@@ -1112,6 +1148,34 @@ def verify_image_label(args):
                     ImageOps.exif_transpose(Image.open(im_file)).save(im_file, 'JPEG', subsampling=0, quality=100)
                     msg = f'{prefix}WARNING ⚠️ {im_file}: corrupt JPEG restored and saved'
 
+        mask = Image.open(mask_file)
+        mask.verify()  # PIL verify
+        assert (shape == exif_size(mask) ), f'image size != mask size'
+        assert mask.format.lower() in IMG_FORMATS, f'invalid image format {mask.format}'
+        if mask.format.lower() in ('jpg', 'jpeg'):
+            with open(mask_file, 'rb') as f:
+                f.seek(-2, 2)
+                if f.read() != b'\xff\xd9':  # corrupt JPEG
+                    ImageOps.exif_transpose(Image.open(mask_file)).save(mask_file, 'JPEG', subsampling=0, quality=100)
+                    msg = f'{prefix}WARNING ⚠️ {mask_file}: corrupt JPEG restored and saved'
+        
+        if os.path.isfile(arr_file):
+            with open(arr_file) as f:
+                arr = [x.split() for x in f.read().strip().splitlines() if len(x)]
+                arr = np.array(arr, dtype=np.float32)
+            arrn = len(arr)
+            if arrn:
+                assert arr.shape[1] == 7, f'labels require 9 columns(cls x1 y1 x2 y3 x3 y3), {arr.shape[1]} columns detected'
+                _, i = np.unique(arr, axis=0, return_index=True)
+                if len(i) < arrn:  # duplicate row check
+                    arr = arr[i]  # remove duplicates
+                    msg = f'{prefix}WARNING ⚠️ {im_file}: {arrn - len(i)} duplicate arr labels removed'
+            else:
+                arr = np.zeros((0, 7), dtype=np.float32)
+        else:
+            arr = np.zeros((0, 7), dtype=np.float32)
+            
+                      
         # verify labels
         if os.path.isfile(lb_file):
             nf = 1  # label found

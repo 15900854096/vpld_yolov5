@@ -162,7 +162,7 @@ class ComputeLoss:
         self.fs_num_class = h['fs_num_class']
         self.device = device
 
-    def __call__(self, p, targets, masks):  # predictions, targets
+    def __call__(self, p, targets, masks, arrs):  # predictions, targets
         lcls = torch.zeros(1, device=self.device)  # class loss
         lbox = torch.zeros(1, device=self.device)  # box loss
         lobj = torch.zeros(1, device=self.device)  # object loss
