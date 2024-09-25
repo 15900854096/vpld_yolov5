@@ -66,12 +66,14 @@ def batch_draw_mask_save(imgs, masks):
         mask = torch.squeeze(torch.from_numpy(mask)).long()
         img = img.transpose((1, 2, 0))[:,:,::-1] #chw rgb-> hwc rgb ->hwc bgr
         pre_color = copy.deepcopy(img) #hwc bgr
-        bchanel = 0*(mask==0)
-        gchanel = 255*(mask==0)
-        rchanel = 255*(mask==1)
+        
+        bchanel =  np.vectorize(dict_col_b.get)(mask)
+        gchanel =  np.vectorize(dict_col_g.get)(mask)
+        rchanel =  np.vectorize(dict_col_r.get)(mask)
+        
         pre_color[:,:,0], pre_color[:,:,1], pre_color[:,:,2]  = bchanel, gchanel, rchanel
         xuanran_img = cv2.addWeighted(pre_color,0.3,img,0.7,0)
         cv2.imwrite(r"./xuqing/flipud/freespace_%06d.jpg"%fscnt,xuanran_img)
         fscnt+=1
-        if(fscnt>110):
+        if(fscnt>200):
             sys.exit()                  

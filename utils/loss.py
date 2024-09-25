@@ -134,7 +134,7 @@ class ComputeLoss:
         # Define criteria
         BCEcls = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['cls_pw']], device=device))
         BCEobj = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['obj_pw']], device=device))
-        MSEwh = nn.MSELoss()
+        MSEwh = nn.MSELoss(reduction='mean')
         MSEthetaAD = nn.MSELoss(reduction='none')
         MSEobj = nn.MSELoss(reduction='none')
 
@@ -172,15 +172,30 @@ class ComputeLoss:
         
         vpld_weight = hyp["vpld_weight"]
         fs_weight = hyp["fs_weight"]
+        # print("p[vpld].shape:", len(p["vpld"]), p["vpld"][0].shape)
+        # print("p[fs].shape:", len(p["fs"]), p["fs"][0].shape)
+        # sys.exit()
         if hyp["task_fs"]:
             fs_gt = self.build_fs_targets(masks) #nhw--->nchw
             
             if(self.hyp["fs_use_focalloss"]):
                 loss_pixel = self.foclaloss(p["fs"][0], masks)
             else:
+                N_, H_, W_=masks.shape
                 cls_weights = torch.ones(self.fs_num_class, device=self.device)
                 loss_pixel = CE_Loss(p["fs"][0], masks, cls_weights, num_classes = self.fs_num_class)
-            
+                
+                weights = masks!=0
+                for i, mask in enumerate(masks):
+                    sumobj = int(torch.sum(weights[i]).cpu())    
+                    # list1 = [random.randint(0,mask.shape[0]-1) for j in range(sumobj)]
+                    # list2 = [random.randint(0,mask.shape[1]-1) for j in range(sumobj)]
+                    list1 = random.choices(range(mask.shape[0]), k = sumobj*3)
+                    list2 = random.choices(range(mask.shape[1]), k = sumobj*3)
+                    weights[i][list1,list2] = 1 
+                loss_pixel *= weights.view(-1)
+                loss_pixel = torch.sum(loss_pixel) / torch.sum(weights.view(-1)) * N_ #torch.mean(loss_pixel)
+                
             if(self.fs_num_class > 2):
                 loss_global = self.MutilDice(p["fs"][0], fs_gt)
             else:
@@ -244,7 +259,7 @@ class ComputeLoss:
                 losstheAB = self.MSEwh(Apbox[:,4:6], Atbox[i][:,4:6]) + self.MSEwh(Bpbox[:,4:6], Btbox[i][:,4:6])
                 losslen = self.MSEwh(Apbox[:,6:7], Atbox[i][:,6:7]) + self.MSEwh(Bpbox[:,6:7], Btbox[i][:,6:7])
                 
-                lbox += lossxy * 1 + losslen * 0.75 + losstheAB * 0.75 + losstheAD * 2
+                lbox += lossxy * 1 + losslen * 0.75 + losstheAB * 0.75 + losstheAD * 2 #每一个都是平均损失，但是做了加和的处理
                     
                 #iou = bbox_iou(pbox, tbox[i], CIoU=True).squeeze()  # iou(prediction, target)
                 #lbox += (1.0 - iou).mean()  # iou loss
@@ -561,7 +576,7 @@ def CE_Loss(inputs, target, cls_weights, num_classes=2):
     temp_target = target.view(-1)
 
     #CE_loss  = nn.CrossEntropyLoss(weight=cls_weights, ignore_index=num_classes)(temp_inputs, temp_target)
-    CE_loss  = nn.CrossEntropyLoss(ignore_index=num_classes)(temp_inputs, temp_target)
+    CE_loss  = nn.CrossEntropyLoss(ignore_index=num_classes, reduction='none')(temp_inputs, temp_target)
     return CE_loss
 
 #仅限于二分类使用
