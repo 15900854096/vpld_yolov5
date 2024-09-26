@@ -1,6 +1,6 @@
 python ./detect.py \
---weights ./runs/train/exp110/weights/best.pt \
---source /home/xuqing/vpld_groundtruth_repair/123/images \
+--weights ./runs/train/exp39/weights/best.pt \
+--source /home/xuqing/hpa_groundtruth/test/id-19410/images \
 --data ./xuqing/VOC_xuqing.yaml \
 --device 4 \
 --imgsz 640 \

@@ -108,7 +108,28 @@ class MergeDiffSizeBufferConv(nn.Module):
         res = torch.add(temp2,temp3)
 
         return res       
-
+    
+class ConvList(nn.Module):
+    def __init__(self, inch, outch):
+        super().__init__()
+        self.c1 = nn.Conv2d(inch, inch, 3, 1, 1, groups=1, dilation=1, bias=True)
+        self.b1 = nn.BatchNorm2d(inch)
+        self.a1 = nn.ReLU()
+        
+        self.c2 = nn.Conv2d(inch, inch, 3, 1, 1, groups=1, dilation=1, bias=True)
+        self.b2 = nn.BatchNorm2d(inch)
+        self.a2 = nn.ReLU()
+        
+        self.c3 = nn.Conv2d(inch, outch, 3, 1, 1, groups=1, dilation=1, bias=True)
+        
+        self.neck1 = nn.Sequential(*(self.c1,self.b1,self.a1))
+        self.neck2 = nn.Sequential(*(self.c2,self.b2,self.a2))
+    def forward(self, x):
+        x = self.neck1(x)
+        x = self.neck2(x)
+        x = self.c3(x)
+        return x    
+        
 class FreeSpaceConv(nn.Module):#16倍下采样到原图
     def __init__(self, inch, outch):
         super().__init__()

@@ -45,27 +45,32 @@ class Detect(nn.Module):
     stride = None  # strides computed during build
     dynamic = False  # force grid reconstruction
     export = False  # export mode
+    stride_arr = None
 
     def __init__(self, nc=80, anchors=(), ch=(), inplace=True):  # detection layer
         super().__init__()
         self.nc = nc  # number of classes
         self.no = nc + 16  # number of outputs per anchor # 16 = Ax Ay Ac1 As1 Ac2 As2 Alen Aobj  Bx By Bc1 Bs1  Bc2 Bs2 Blen Bobj cls1 cls2
+        self.narr = hyp["ss_num_class"] + 9 #9: obj x1 y1 len1 c1 s1 len2 c2 s2
         self.nl = len(anchors)  # number of detection layers
         self.na = len(anchors[0])  #len(anchors[0]) // 2  # number of anchors only length hase anchor
         self.grid = [torch.empty(0) for _ in range(self.nl)]  # init grid
+        self.grid_arr = [torch.empty(0) for _ in range(self.nl)]  # init grid
         self.anchor_grid = [torch.empty(0) for _ in range(self.nl)]  # init anchor grid
+        self.anchor_grid_arr = [torch.empty(0) for _ in range(self.nl)]  # init anchor grid
         self.register_buffer('anchors', torch.tensor(anchors).float().view(self.nl, -1, 1)) #view(self.nl, -1, 2)  # shape(nl,na,2)
         #self.m = nn.ModuleList(nn.Conv2d(x, self.no * self.na, 1) for x in ch)  # output conv
         print("@@@@@@@@@@@@@@@@@@@@@:", ch)#low_level  8downsample  16downsample  32downsample
         self.m_merge_diff_size_buffer_conv = MergeDiffSizeBufferConv(listch=ch[2:])#输出通道数为1,2,3的中间一个即ch[2]
         self.m_vpld_decoup_conv = DecoupConv(ch[3], self.no, self.nc , self.na, 3)
         self.deeplabheadv3plus = DeepLabHeadV3Plus(in_channels=ch[1], low_level_channels=ch[0], num_classes = hyp["fs_num_class"])
+        self.m_sstask_conv = ConvList(inch = ch[3] , outch = self.narr) 
         self.inplace = inplace  # use inplace ops (e.g. slice assignment)
 
     def forward(self, x):
-        z = {"vpld":[],"fs":[]}  # inference output
+        z = {"vpld":[],"fs":[],"ss":[]}  # inference output
         #output=[0]
-        output={"vpld":[0],"fs":[0]}
+        output={"vpld":[0],"fs":[0],"ss":[0]}
         
         temp = self.m_merge_diff_size_buffer_conv(x[2:])
         if(hyp["task_fs"]):
@@ -75,8 +80,10 @@ class Detect(nn.Module):
             
         if self.export:
             output["vpld"]=self.m_vpld_decoup_conv(temp)
+            if(hyp["task_ss"]):
+                output["ss"] = self.m_sstask_conv(temp)   #self.ss(temp)  
             if(hyp["task_fs"]):
-                output["fs"] = self.deeplabheadv3plus(feature)   #self.fs(temp)
+                output["fs"] = self.deeplabheadv3plus(feature)   #self.fs(temp)  
             return output
         
         for i in range(self.nl):#这里的self.nl==1
@@ -84,13 +91,17 @@ class Detect(nn.Module):
                 output["vpld"][i] = self.m_vpld_decoup_conv(temp)
             else:
                 output["vpld"][i] = torch.zeros_like(self.m_vpld_decoup_conv(temp))  # conv
-                
+            
+            if(hyp["task_ss"]):
+                output["ss"][i] = self.m_sstask_conv(temp)  #self.fs(temp)
+                   
             if(hyp["task_fs"]):
                 output["fs"][i] = self.deeplabheadv3plus(feature)  #self.fs(temp)
                 
+            
+                    
             bs, _, ny, nx = output["vpld"][i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
             output["vpld"][i] = output["vpld"][i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
-            output["vpld"][i] = output["vpld"][i]
             if not self.training:  # inference
                 if self.dynamic or self.grid[i].shape[2:4] != output["vpld"][i].shape[2:4]:
                     self.grid[i], self.anchor_grid[i] = self._make_grid(nx, ny, i)
@@ -133,6 +144,30 @@ class Detect(nn.Module):
                     z["fs"].append(output["fs"][i]) #nhwc
                 else:
                     z["fs"].append(torch.zeros_like(output["fs"][i])) #nhwc
+            
+            if(hyp["task_ss"]):
+                bs, _, ny, nx = output["ss"][i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
+                output["ss"][i] = output["ss"][i].view(bs, self.na, self.narr, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
+                if not self.training:  # inference
+                    if self.dynamic or self.grid_arr[i].shape[2:4] != output["ss"][i].shape[2:4]:
+                        self.grid_arr[i], self.anchor_grid_arr[i] = self._make_grid(nx, ny, i)
+
+                    #target-subset of predictions #pred: obj Ax Ay Bc Bs Blen Cc C Clen class1234
+                    obj, Axy, Bcs, Blen, Ccs, Clen, class1234 = output["ss"][i].split((1, 2, 2, 1, 2, 1, self.narr-9), 4)
+                    
+                    Axy = (Axy.sigmoid()  + self.grid_arr[i]) * self.stride_arr[i]
+                    Bcs = Bcs.tanh() 
+                    Ccs = Ccs.tanh()
+                    Blen = (Blen.sigmoid()) * self.anchor_grid_arr[i]
+                    Clen = (Clen.sigmoid()) * self.anchor_grid_arr[i]
+                    obj = obj.sigmoid() 
+                    class1234 = class1234.sigmoid()
+                    
+                    y = torch.cat((obj, Axy, Bcs, Blen, Ccs, Clen, class1234), 4)
+                        
+                    if(hyp["task_ss"]):
+                        z["ss"].append(y.view(bs, self.na * nx * ny, self.narr)) #nhwc              
+                        
         #train    :  output
         #export   :  z
         #val|test :  (z,output)         
@@ -275,9 +310,11 @@ class DetectionModel(BaseModel):
             m.inplace = self.inplace
             forward = lambda x: self.forward(x)[0] if isinstance(m, Segment) else self.forward(x)
             m.stride = torch.tensor([s / x.shape[-2] for x in forward(torch.zeros(10, ch, s, s))["vpld"]])  # forward
+            m.stride_arr = torch.tensor([s / x.shape[-2] for x in forward(torch.zeros(10, ch, s, s))["ss"]])
             check_anchor_order(m)
             #m.anchors /= m.stride.view(-1, 1, 1)
             self.stride = m.stride
+            self.stride_arr = m.stride_arr
             self._initialize_biases()  # only run once
 
         # Init weights, biases

@@ -203,7 +203,7 @@ def run(
     tp, fp, p, r, f1, mp, mr, map50, ap50, map95, ap95, map, fs_cur_mean = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     map90, ap90 = 0.0, 0.0
     dt = Profile(), Profile(), Profile()  # profiling times
-    loss = torch.zeros(4, device=device)  #box_loss obj_loss cls_loss fs_loss
+    loss = torch.zeros(7, device=device)  #box_loss obj_loss cls_loss fs_loss ss_box_loss ss_obj_loss ss_cls_loss
     jdict, stats, ap, ap_class ,fs_cur= [], [], [], [], []
     callbacks.run('on_val_start')
     pbar = tqdm(dataloader, desc=s, bar_format=TQDM_BAR_FORMAT)  # progress bar
@@ -226,7 +226,7 @@ def run(
             preds = preds if compute_loss else preds[0]
         # Loss
         if compute_loss:
-            loss += compute_loss(train_out, targets, masks)[1]  # box, obj, cls, fs
+            loss += compute_loss(train_out, targets, masks, arrs)[1]  # box, obj, cls, fs ss_box, ss_obj, ss_cls
 
         # NMS
         #targets: img_id cls x1 y1 x2 y2 x3 y3 x3 x4

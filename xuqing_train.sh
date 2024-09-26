@@ -2,13 +2,14 @@ python train.py  \
 --weights xuqing/yolov5s.pt \
 --cfg ./xuqing/yolov5s_xuqing.yaml  \
 --data ./xuqing/VOC_xuqing.yaml  \
---device 7 \
+--device 1 \
 --imgsz 640 \
---epoch 200 \
---batch-size 8 \
+--epoch 300 \
+--batch-size 4 \
 --label-smoothing 0.2 \
 --noautoanchor \
 --sync-bn \
+--workers 0 \
 --patience 0 
 #--optimizer Adam
 #--resume
