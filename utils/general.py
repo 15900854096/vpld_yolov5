@@ -1329,3 +1329,127 @@ def elimination_holes_singlelabel(mask, label, rate):#把被label包围的空洞
     for r in cv_contours:
         cv2.fillPoly(mask, [r], label)
     return mask
+
+def non_max_suppression_arr(
+        prediction,
+        conf_thres=0.25,
+        iou_thres=0.45,
+        imgsz=640,
+        classes=None,
+        agnostic=False,
+        multi_label=False,
+        labels=(),
+        max_det=300,
+        nm=0,  # number of masks
+):
+    #                              0   1  2  3  4   5   6  7   8    9    10   11   12 
+    #target-subset of predictions: obj Ax Ay Bc Bs Blen Cc Cs Clen cls1 cls2 cls3 cls4
+    
+    """Non-Maximum Suppression (NMS) on inference results to reject overlapping detections
+
+    Returns:
+         list of detections, on (n,6) tensor per image [xyxy, conf, cls]
+    """
+    if isinstance(imgsz,list):
+        imgsz=imgsz[0]
+    
+    # Checks
+    assert 0 <= conf_thres <= 1, f'Invalid Confidence threshold {conf_thres}, valid values are between 0.0 and 1.0'
+    assert 0 <= iou_thres <= 1, f'Invalid IoU {iou_thres}, valid values are between 0.0 and 1.0'
+    if isinstance(prediction, (list, tuple)):  # YOLOv5 model in validation model, output = (inference_out, loss_out)
+        prediction = prediction[0]  # select only inference output
+
+    device = prediction.device
+    mps = 'mps' in device.type  # Apple MPS
+    if mps:  # MPS not fully supported yet, convert tensors to CPU before NMS
+        prediction = prediction.cpu()
+    bs = prediction.shape[0]  # batch size
+    nc = prediction.shape[2] - nm - 9  # number of classes
+
+    Axc = prediction[..., 0] > conf_thres  # candidates
+
+    # Settings
+    # min_wh = 2  # (pixels) minimum box width and height
+    max_wh = 7680  # (pixels) maximum box width and height
+    max_nms = 30000  # maximum number of boxes into torchvision.ops.nms()
+    time_limit = 0.5 + 0.05 * bs  # seconds to quit after
+    redundant = True  # require redundant detections
+    multi_label &= nc > 1  # multiple labels per box (adds 0.5ms/img)
+    merge = False  # use merge-NMS
+
+    t = time.time()
+    output = [torch.zeros((0, 8 + nm), device=prediction.device)] * bs # 8 = Ax Ay Bx By Cx Cy conf cls  base_norm1
+    for xi, x in enumerate(prediction):  # image index, image inference
+        
+        Ax = x[Axc[xi]]  # obj Ax Ay Bc Bs Blen Cc Cs Clen cls1 cls2 cls3 cls4
+
+        #  0  1  2  3  4   5   6  7   8    9    10   11   12 
+        # obj Ax Ay Bc Bs Blen Cc Cs Clen cls1 cls2 cls3 cls4
+
+        # If none remain process next image
+        if not Ax.shape[0]:
+            continue
+        
+        #对置信度排序，然后转np.array
+        Ax = Ax[Ax[:, 0].argsort(descending=True)]
+        Ax = Ax.cpu().numpy()
+            
+        #Apoint use nms   
+        Ax_idx = nms_by_distance_arr(Ax)
+        Ax = Ax[Ax_idx]        
+        
+        if not Ax.shape[0]:
+            continue
+        
+        #  0  1  2  3  4   5   6  7   8    9    10   11   12 
+        # obj Ax Ay Bc Bs Blen Cc Cs Clen cls1 cls2 cls3 cls4
+        # Compute conf       
+        Ax[:, 9:] *= Ax[:, 0:1]  # conf = obj_conf * cls_conf
+        
+        Ax = torch.tensor(Ax, device=prediction.device)
+        new_mi = 13       
+        box = Ax[:, 1:9]
+        mask = Ax[:, new_mi:]
+        conf, j = Ax[:, 9:new_mi].max(1, keepdim=True)
+        x = torch.cat((box, conf, j.float(), mask), 1)[conf.view(-1) > conf_thres] 
+        
+        #  0  1  2  3  4   5   6  7   8    9 
+        # Ax Ay Bc Bs Blen Cc Cs Clen obj cls
+        temp = torch.zeros((x.shape[0],8), device=prediction.device)
+        temp[:,0:2] = x[:,0:2]
+        temp[:,2:3] = x[:,0:1] + x[:,2:3] * x[:,4:5] * imgsz
+        temp[:,3:4] = x[:,1:2] + x[:,3:4] * x[:,4:5] * imgsz
+        temp[:,4:5] = x[:,0:1] + x[:,5:6] * x[:,7:8] * imgsz
+        temp[:,5:6] = x[:,1:2] + x[:,6:7] * x[:,7:8] * imgsz
+        temp[:,6:8] = x[:,8:10]
+        output[xi] = temp
+        #      0  1  2  3  4  5   6   7
+        # 8 = Ax Ay Bx By Cx Cy conf cls
+        
+        if (time.time() - t) > time_limit:
+            LOGGER.warning(f'WARNING ⚠️ NMS time limit {time_limit:.3f}s exceeded')
+            break  # time limit exceeded
+    return output
+
+def nms_by_distance_arr(boxes,nms_thresh=50):
+    #  0  1  2  3  4   5   6  7   8    9    10   11   12 
+    # obj Ax Ay Bc Bs Blen Cc Cs Clen cls1 cls2 cls3 cls4
+    tmp = np.zeros((boxes.shape[0], 2))
+    tmp[:,0:1] = boxes[:,1:2] # x1
+    tmp[:,1:2] = boxes[:,2:3] # y1
+    boxes = tmp
+    keep_indices = []
+    # 从大到小
+    order = np.arange(0,boxes.shape[0])
+    while order.shape[0] > 0:
+        i = order[0]
+        keep_indices.append(i)
+        not_overlaps = []
+        for j in range(len(order)):
+            if order[j] != i:
+                dist = disPts(boxes[i] ,boxes[order[j]]) #bbox_iou_eval(boxes[i],boxes[order[j]])
+                if dist > nms_thresh:
+                    not_overlaps.append(j)
+        order = order[not_overlaps]
+    keep_boxes = boxes[[i.item() for i in keep_indices]]
+    return keep_indices

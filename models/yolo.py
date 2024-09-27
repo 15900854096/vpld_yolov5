@@ -105,7 +105,6 @@ class Detect(nn.Module):
             if not self.training:  # inference
                 if self.dynamic or self.grid[i].shape[2:4] != output["vpld"][i].shape[2:4]:
                     self.grid[i], self.anchor_grid[i] = self._make_grid(nx, ny, i)
-
                 if isinstance(self, Segment):  # (boxes + masks)
                     xy, wh, conf, mask = output["vpld"][i].split((2, 2, self.nc + 1, self.no - self.nc - 5), 4)
                     xy = (xy.sigmoid() * 2 + self.grid[i]) * self.stride[i]  # xy
@@ -151,10 +150,8 @@ class Detect(nn.Module):
                 if not self.training:  # inference
                     if self.dynamic or self.grid_arr[i].shape[2:4] != output["ss"][i].shape[2:4]:
                         self.grid_arr[i], self.anchor_grid_arr[i] = self._make_grid(nx, ny, i)
-
                     #target-subset of predictions #pred: obj Ax Ay Bc Bs Blen Cc C Clen class1234
                     obj, Axy, Bcs, Blen, Ccs, Clen, class1234 = output["ss"][i].split((1, 2, 2, 1, 2, 1, self.narr-9), 4)
-                    
                     Axy = (Axy.sigmoid()  + self.grid_arr[i]) * self.stride_arr[i]
                     Bcs = Bcs.tanh() 
                     Ccs = Ccs.tanh()
@@ -276,6 +273,15 @@ class BaseModel(nn.Module):
             m.grid = list(map(fn, m.grid))
             if isinstance(m.anchor_grid, list):
                 m.anchor_grid = list(map(fn, m.anchor_grid))
+
+            try:
+                m.stride_arr = fn(m.stride_arr)
+                m.grid_arr = list(map(fn, m.grid_arr))
+                if isinstance(m.anchor_grid_arr, list):
+                    m.anchor_grid_arr = list(map(fn, m.anchor_grid_arr))
+            except:
+                print("训练模型的时候初始模型, 没有这套餐数, 所以会报错。推理的时候, 又需要从好模型里面加载这套参数以及所在device!!!")
+                
         return self
 
 
@@ -419,6 +425,7 @@ class ClassificationModel(BaseModel):
         model.model[-1] = c  # replace
         self.model = model.model
         self.stride = model.stride
+        self.stride_arr = model.stride_arr
         self.save = []
         self.nc = nc
 
