@@ -302,7 +302,6 @@ def run(
             nl, npr = labels.shape[0], pred.shape[0]  # number of labels, predictions
             path = Path(paths[si])
             correct = torch.zeros(npr, niou, dtype=torch.bool, device=device)  # init
-            correct_arr = torch.zeros(npr, niou, dtype=torch.bool, device=device)  # init
             seen += 1
 
             #padding: cal map not care about label whether right
@@ -324,7 +323,8 @@ def run(
                 pred_arr[:,0:6] *= torch.tensor([rate, rate, rate, rate, rate, rate], device = pred_arr.device)
                 gt_arr = arrs[arrs[:, 0] == si, 1:][:,:7] #lebels: label x1 y1 x2 y2 x3 y3 all is BatchNorm_1
                 gt_arr[:, 1:] *= torch.tensor((ori_shape[0], ori_shape[0], ori_shape[0], ori_shape[0], ori_shape[0], ori_shape[0]), device=device)#lebels: label x1 y1 x2 y2 x3 y3 x4 y4  all is base_ori
-                nl_arr, npr_arr = gt_arr.shape[0], pred_arr.shape[0]  # number of labels, predictions   
+                nl_arr, npr_arr = gt_arr.shape[0], pred_arr.shape[0]  # number of labels, predictions  
+                correct_arr = torch.zeros(npr_arr, niou, dtype=torch.bool, device=device)  # init 
                 if npr_arr == 0:
                     if nl_arr:
                         stats_arr.append((correct_arr, *torch.zeros((2, 0), device=device), gt_arr[:, 0])) # (correct, conf, pcls, tcls)
