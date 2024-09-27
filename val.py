@@ -40,9 +40,9 @@ from models.common import DetectMultiBackend
 from utils.callbacks import Callbacks
 from utils.dataloaders import create_dataloader
 from utils.general import (LOGGER, TQDM_BAR_FORMAT, Profile, check_dataset, check_img_size, check_requirements,
-                           check_yaml, coco80_to_coco91_class, colorstr, increment_path, non_max_suppression,
+                           check_yaml, coco80_to_coco91_class, colorstr, increment_path, non_max_suppression, non_max_suppression_arr,
                            print_args, scale_boxes, xywh2xyxy, xyxy2xywh, default_vlot_depth, default_hlot_depth, default_hlot_min_width)
-from utils.metrics import ConfusionMatrix, ap_per_class, box_iou, box_iou_poly, StreamSegMetrics
+from utils.metrics import ConfusionMatrix, ap_per_class, box_iou, boxes_iou_matrix, arres_iou_matrix, StreamSegMetrics
 from utils.plots import output_to_target, plot_images, plot_val_study
 from utils.torch_utils import select_device, smart_inference_mode
 
@@ -87,7 +87,7 @@ def process_batch(detections, labels, iouv):
     #labelsn: label x1 y1 x2 y2 x3 y3 x4 y4 base_ori&depth_ok
     correct = np.zeros((detections.shape[0], iouv.shape[0])).astype(bool)
     #iou = box_iou(labels[:, 1:], detections[:, :6])
-    iou = box_iou_poly(labels[:, 1:], detections[:, :8])
+    iou = boxes_iou_matrix(labels[:, 1:], detections[:, :8])
     correct_class = labels[:, 0:1] == detections[:, 9]
     for i in range(len(iouv)):
         x = torch.where((iou >= iouv[i]) & correct_class)  # IoU > threshold and classes match
@@ -101,6 +101,32 @@ def process_batch(detections, labels, iouv):
             correct[matches[:, 1].astype(int), i] = True
     return torch.tensor(correct, dtype=torch.bool, device=iouv.device)
 
+def process_batch_arr(detections, labels, iouv):
+    """
+    Return correct prediction matrix
+    Arguments:
+        detections (array[N, 8]), x1, y1, x2, y2, x3, y3, conf, class
+        labels (array[M, 7]), class, x1, y1, x2, y2, x3, y3
+    Returns:
+        correct (array[N, 10]), for 10 IoU levels
+    """
+    #predn:   x1 y1 x2 y2 x3 y3 conf cls   all base_ori
+    #labelsn: label x1 y1 x2 y2 x3 y3      base_ori
+    correct = np.zeros((detections.shape[0], iouv.shape[0])).astype(bool)
+    #iou = box_iou(labels[:, 1:], detections[:, :6])
+    iou = arres_iou_matrix(labels, torch.cat((detections[:, 7:8],detections[:, :6]), 1))
+    correct_class = labels[:, 0:1] == detections[:, 7]
+    for i in range(len(iouv)):
+        x = torch.where((iou >= iouv[i]) & correct_class)  # IoU > threshold and classes match
+        if x[0].shape[0]:
+            matches = torch.cat((torch.stack(x, 1), iou[x[0], x[1]][:, None]), 1).cpu().numpy()  # [label, detect, iou]
+            if x[0].shape[0] > 1:
+                matches = matches[matches[:, 2].argsort()[::-1]]
+                matches = matches[np.unique(matches[:, 1], return_index=True)[1]]
+                # matches = matches[matches[:, 2].argsort()[::-1]]
+                matches = matches[np.unique(matches[:, 0], return_index=True)[1]]
+            correct[matches[:, 1].astype(int), i] = True
+    return torch.tensor(correct, dtype=torch.bool, device=iouv.device)
 
 @smart_inference_mode()
 def run(
@@ -168,7 +194,9 @@ def run(
     cuda = device.type != 'cpu'
     is_coco = isinstance(data.get('val'), str) and data['val'].endswith(f'coco{os.sep}val2017.txt')  # COCO dataset
     nc = 1 if single_cls else int(data['nc'])  # number of classes
+    nc_arr = 1 if single_cls else hyp["ss_num_class"]
     iouv = torch.linspace(0.5, 0.95, 10, device=device)  # iou vector for mAP@0.5:0.95
+    iouv_arr = torch.linspace(0.5, 0.95, 10, device=device)  # iou vector for mAP@0.5:0.95
     niou = iouv.numel() #niou=10
 
     # Dataloader
@@ -197,25 +225,28 @@ def run(
     if isinstance(names, (list, tuple)):  # old format
         names = dict(enumerate(names))
     class_map = coco80_to_coco91_class() if is_coco else list(range(1000))
-    s = ('%22s' + '%11s' * 8 + '%15s') % ('Class', 'Images', 'Instances', 'P', 'R', 'mAP50', 'mAP90', 'mAP95', 'mAP50-95', 'fs_accuracy')
+    s = ('%11s' + '%11s' * 9 + '%15s' + '%11s'*3) % ('Class', 'Images', 'Instances', 'Instances_','P', 'R', 'mAP50', 'mAP90', 'mAP95', 'mAP50-95', 'fs_accuracy', 'P_arr', 'R_arr', 'mAP90_arr')
     if(txtlog!=None):
         txtlog.writelines('\n'+s)
     tp, fp, p, r, f1, mp, mr, map50, ap50, map95, ap95, map, fs_cur_mean = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     map90, ap90 = 0.0, 0.0
+    tp_arr, fp_arr, p_arr, r_arr, f1_arr, mp_arr, mr_arr, map50_arr, ap50_arr, map95_arr, ap95_arr, map_arr = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+    map90_arr, ap90_arr = 0.0, 0.0
     dt = Profile(), Profile(), Profile()  # profiling times
     loss = torch.zeros(7, device=device)  #box_loss obj_loss cls_loss fs_loss ss_box_loss ss_obj_loss ss_cls_loss
-    jdict, stats, ap, ap_class ,fs_cur= [], [], [], [], []
+    jdict, stats, stats_arr, ap, ap_class ,fs_cur= [], [], [], [], [], []
     callbacks.run('on_val_start')
     pbar = tqdm(dataloader, desc=s, bar_format=TQDM_BAR_FORMAT)  # progress bar
     fs_cal = StreamSegMetrics(hyp["fs_num_class"])
     fs_cal.reset()
     for batch_i, (im, targets, paths, shapes, masks, arrs) in enumerate(pbar):
         callbacks.run('on_val_batch_start')
-        masks = masks.to(device, non_blocking=True)
         with dt[0]:
             if cuda:
                 im = im.to(device, non_blocking=True)
                 targets = targets.to(device)
+                masks = masks.to(device, non_blocking=True)
+                arrs = arrs.to(device, non_blocking=True)
             im = im.half() if half else im.float()  # uint8 to fp16/32
             im /= 255  # 0 - 255 to 0.0 - 1.0
             nb, _, height, width = im.shape  # batch size, channels, height, width
@@ -249,18 +280,29 @@ def run(
             
             if(hyp["task_fs"]):
                 fs_buffer = torch.max(preds["fs"][0],dim=1).indices.cpu()  #NCHW float--->NHW index， max不仅会求出dim维度的那个最大值，而且还会消除dim这个维度
-                                
+
+            if(hyp["task_ss"]):
+                ss_buffer = non_max_suppression_arr(preds["ss"],
+                                        conf_thres,
+                                        iou_thres,
+                                        imgsz,
+                                        labels=lb,
+                                        multi_label=True,
+                                        agnostic=single_cls,
+                                        max_det=max_det)
+                    
         # Metrics
         for si, pred in enumerate(vpld_buffer):
             
             
             ori_shape = shapes[si][0]
-            ipt_shape = shapes[si][1]
+            rate_pad = shapes[si][1] #shapes[si]: (h0, w0), ((h / h0, w / w0), pad)
             labels = targets[targets[:, 0] == si, 1:][:,:9] #lebels: label x1 y1 x2 y2 x3 y3 x4 y4  all is BatchNorm_1
             labels[:, 1:] *= torch.tensor((ori_shape[0], ori_shape[0], ori_shape[0], ori_shape[0], ori_shape[0], ori_shape[0], ori_shape[0], ori_shape[0]), device=device)#lebels: label x1 y1 x2 y2 x3 y3 x4 y4  all is base_ori
             nl, npr = labels.shape[0], pred.shape[0]  # number of labels, predictions
             path = Path(paths[si])
             correct = torch.zeros(npr, niou, dtype=torch.bool, device=device)  # init
+            correct_arr = torch.zeros(npr, niou, dtype=torch.bool, device=device)  # init
             seen += 1
 
             #padding: cal map not care about label whether right
@@ -271,13 +313,26 @@ def run(
             if(hyp["task_fs"]):
                 premask = np.array(fs_buffer[si])
                 gtmask = np.array(masks[si].cpu())# torch hw -> np hw
-                # print("premask: " , premask.shape)
-                # print("gtmask: " , gtmask.shape)
-                #sys.exit()
                 fs_cal.update(np.array(gtmask),premask)
                 fs_cur.append(np.sum(premask==gtmask)/(gtmask.shape[0]*gtmask.shape[1]))
             else:
                 fs_cur.append(1.0)
+                
+            if(hyp["task_ss"]):
+                pred_arr = ss_buffer[si] #Ax Ay Bx By Cx Cy conf cls
+                rate = 1.0/rate_pad[0][0]
+                pred_arr[:,0:6] *= torch.tensor([rate, rate, rate, rate, rate, rate], device = pred_arr.device)
+                gt_arr = arrs[arrs[:, 0] == si, 1:][:,:7] #lebels: label x1 y1 x2 y2 x3 y3 all is BatchNorm_1
+                gt_arr[:, 1:] *= torch.tensor((ori_shape[0], ori_shape[0], ori_shape[0], ori_shape[0], ori_shape[0], ori_shape[0]), device=device)#lebels: label x1 y1 x2 y2 x3 y3 x4 y4  all is base_ori
+                nl_arr, npr_arr = gt_arr.shape[0], pred_arr.shape[0]  # number of labels, predictions   
+                if npr_arr == 0:
+                    if nl_arr:
+                        stats_arr.append((correct_arr, *torch.zeros((2, 0), device=device), gt_arr[:, 0])) # (correct, conf, pcls, tcls)
+                else:
+                    if(nl_arr):
+                        correct_arr = process_batch_arr(pred_arr, gt_arr, iouv_arr)
+                    stats_arr.append((correct_arr, pred_arr[:, 6], pred_arr[:, 7], gt_arr[:, 0])) # (correct, conf, pcls, tcls)
+                   
                    
             if npr == 0:
                 if nl:
@@ -291,14 +346,13 @@ def run(
                 pred[:, 10] = 0
             predn = pred.clone() 
             # x y len c1 s1 ADc ADs BCc BCs conf cls base_ipt(x1 y1) BatchNorm1(other)
-            scale_boxes(im[si].shape[1:], predn[:, :2], ori_shape, ipt_shape)  # native-space pred  only process x1 y1 ## base_640 to base_ori
+            scale_boxes(im[si].shape[1:], predn[:, :2], ori_shape, rate_pad)  # native-space pred  only process x1 y1 ## base_640 to base_ori
             # x y len c1 s1 ADc ADs BCc BCs conf cls base_ori(x1 y1) BatchNorm1(other)
             
             #translation
             lengPre = torch.full((predn.shape[0] ,1), default_vlot_depth, device=device)
             lengPre[predn[:,2]*ori_shape[0] > default_hlot_min_width,0:1] = default_hlot_depth
-            #hlotPre_idx = torch.tensor(range(predn.shape[0]), device=device)[predn[0,2]*ori_shape[0] > default_hlot_min_width]
-            #lengPre[hlotPre_idx,0:1]=default_hlot_depth
+        
 
             # 0 1  2   3  4  5  6    7   8    9   10
             # x y len c1 s1 ADc ADs BCc BCs conf cls base_ori(x1 y1) BatchNorm1(other)
@@ -381,20 +435,28 @@ def run(
         mp, mr, map50, map90, map95, map = p.mean(), r.mean(), ap50.mean(), ap90.mean(), ap95.mean(), ap.mean()
     nt = np.bincount(stats[3].astype(int), minlength=nc)  # number of targets per class
 
+    if(hyp["task_ss"]):
+        stats_arr = [torch.cat(x, 0).cpu().numpy() for x in zip(*stats_arr)]  # to numpy
+        if len(stats_arr) and stats_arr[0].any():
+            tp_arr, fp_arr, p_arr, r_arr, f1_arr, ap_arr, ap_class_arr = ap_per_class(*stats_arr, plot=False, save_dir=save_dir, names=names)
+            ap50_arr, ap90_arr, ap95_arr, ap_arr = ap_arr[:, 0], ap_arr[:, 8] ,ap_arr[:, 9], ap_arr.mean(1)  # AP@0.5, AP@0.5:0.95
+            mp_arr, mr_arr, map50_arr, map90_arr, map95_arr, map_arr = p_arr.mean(), r_arr.mean(), ap50_arr.mean(), ap90_arr.mean(), ap95_arr.mean(), ap_arr.mean()
+        nt_arr = np.bincount(stats_arr[3].astype(int), minlength=nc_arr)  # number of targets per class
+            
     # Print results
-    pf = '%22s' + '%11i' * 2 + '%11.3g' * 7  # print format
-    LOGGER.info(pf % ('all', seen, nt.sum(), mp, mr, map50, map90, map95, map, fs_cur_mean))
+    pf = '%11s' + '%11i' * 3 + '%11.3g' * 6 + '%15.3g' + '%11.3g' * 3  # print format
+    LOGGER.info(pf % ('all', seen, nt.sum(), nt_arr.sum(), mp, mr, map50, map90, map95, map, fs_cur_mean, mp_arr, mr_arr, map90_arr))
     if(txtlog!=None):
-        txtlog.writelines('\n' + pf % ('all', seen, nt.sum(), mp, mr, map50, map90, map95, map, fs_cur_mean))
+        txtlog.writelines('\n' + pf % ('all', seen, nt.sum(), nt_arr.sum(), mp, mr, map50, map90, map95, map, fs_cur_mean, mp_arr, mr_arr, map90_arr))
     if nt.sum() == 0:
         LOGGER.warning(f'WARNING ⚠️ no labels found in {task} set, can not compute metrics without labels')
 
     # Print results per class
     if (verbose or (nc < 50 and not training)) and nc > 1 and len(stats):
         for i, c in enumerate(ap_class):
-            LOGGER.info(pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap90[i], ap95[i], ap[i], fs_cur_mean))
+            LOGGER.info(pf % (names[c], seen, nt[c], nt_arr[c], p[i], r[i], ap50[i], ap90[i], ap95[i], ap[i], fs_cur_mean, mp_arr, mr_arr, map90_arr))
             if(txtlog!=None):
-                txtlog.writelines('\n' + pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap90[i], ap95[i], ap[i],fs_cur_mean))
+                txtlog.writelines('\n' + pf % (names[c], seen, nt[c], nt_arr[c], p[i], r[i], ap50[i], ap90[i], ap95[i], ap[i], fs_cur_mean, p_arr[i], r_arr[i], ap90_arr[i]))
 
     # Print speeds
     t = tuple(x.t / seen * 1E3 for x in dt)  # speeds per image
@@ -444,7 +506,7 @@ def run(
     maps = np.zeros(nc) + map
     for i, c in enumerate(ap_class):
         maps[c] = ap[i]
-    return (mp, mr, map50, map95, map, fs_cur_mean, *(loss.cpu() / len(dataloader)).tolist()), maps, t  #loss have four value : box_loss, obj_loss, cls_loss fs_loss
+    return (mp, mr, map50, map95, map, fs_cur_mean, *(loss.cpu() / len(dataloader)).tolist()), maps, t  #loss have seven value : box_loss, obj_loss, cls_loss fs_loss, ss_box_loss, ss_obj_loss, ss_cls_loss
 
 
 def parse_opt():

@@ -152,7 +152,7 @@ class ConfusionMatrix:
         gt_classes = labels[:, 0].int()
         detection_classes = detections[:, 9].int()
         #iou = box_iou(labels[:, 1:], detections[:, :4])
-        iou = box_iou_poly(labels[:, 1:], detections[:, :8])
+        iou = boxes_iou_matrix(labels[:, 1:], detections[:, :8])
         x = torch.where(iou > self.iou_thres)
         if x[0].shape[0]:
             matches = torch.cat((torch.stack(x, 1), iou[x[0], x[1]][:, None]), 1).cpu().numpy()
@@ -363,6 +363,8 @@ def plot_mc_curve(px, py, save_dir=Path('mc_curve.png'), names=(), xlabel='Confi
 import shapely
 import sys
 from shapely.geometry import Polygon, MultiPoint
+
+#单个多边形求交并比
 def bbox_iou_eval(box1, box2):
     box1 = np.array(box1.cpu()).reshape(4, 2)  # 四边形二维坐标表示
     # python四边形对象，会自动计算四个点，并将四个点重新排列成
@@ -381,7 +383,8 @@ def bbox_iou_eval(box1, box2):
             iou = 0
     return iou
 
-def box_iou_poly(box1, box2, eps=1e-7):
+#一堆多边形求交并比矩阵
+def boxes_iou_matrix(boxes1, boxes2, eps=1e-7):
     # https://github.com/pytorch/vision/blob/master/torchvision/ops/boxes.py
     """
     Return intersection-over-union (Jaccard index) of boxes.
@@ -395,18 +398,47 @@ def box_iou_poly(box1, box2, eps=1e-7):
     """
     #predn:   x1 y1 x2 y2 x3 y3 x4 y4 all base_ori
     #labelsn: x1 y1 x2 y2 x3 y3 x4 y4 base_ori&depth_ok
-    N = box1.shape[0]
-    M = box2.shape[0]
-    tmp1=box1 #torch.cat((box1,box1[:,0:2]+box1[:,4:6]-box1[:,2:4]),1)
-    tmp2=box2 #torch.cat((box2,box2[:,0:2]+box2[:,4:6]-box2[:,2:4]),1)
-    
-    ioumat=torch.zeros((N,M),device = box1.device)
+    N = boxes1.shape[0]
+    M = boxes2.shape[0]
+    ioumat=torch.zeros((N,M),device = boxes1.device)
     for i in range(N):
         for j in range(M):
-            ioumat[i][j]=bbox_iou_eval(tmp1[i], tmp2[j])
+            ioumat[i][j]=bbox_iou_eval(boxes1[i], boxes2[j])
     return ioumat        
 
+def arr_iou_eval(arr1, arr2):
+    iou = 0
+    if(arr1[0]==arr2[0] and arr1[0]==0):
+        arr1 = np.array(arr1[1:].cpu()).reshape(3, 2)  # 四边形二维坐标表示
+        poly1 = Polygon(arr1).convex_hull
+        arr2 = np.array(arr2[1:].cpu()).reshape(3, 2)
+        poly2 = Polygon(arr2).convex_hull
+        if  poly1.intersects(poly2):  # 如果两四边形不相交
+            try:
+                inter_area = poly1.intersection(poly2).area  # 相交面积
+                iou = float(inter_area) / (poly1.area + poly2.area - inter_area)
+            except shapely.geos.TopologicalError:
+                print('shapely.geos.TopologicalError occured, iou set to 0')
+    elif (arr1[0]==arr2[0]):
+        Ax1, Ay1, Bx1, By1, _, _ = arr1[1:]
+        Ax2, Ay2, Bx2, By2, _, _ = arr2[1:]
+        if(math.sqrt(math.pow(Ax1-Ax2,2) + math.pow(Ay1-Ay2,2)) < 10 and math.sqrt(math.pow(Bx1-Bx2,2) + math.pow(By1-By2,2)) < 10):
+            iou = 1
+    return iou
+        
 
+#一堆三角形&直线求交并比矩阵
+#必须是这种格式：cls Ax Ay Bx By Cx Cy
+def arres_iou_matrix(arres1, arres2, eps=1e-7):
+    # nms: cls Ax Ay Bx By Cx Cy
+    N = arres1.shape[0]
+    M = arres2.shape[0]
+    ioumat=torch.zeros((N,M), device = arres1.device)
+    for i in range(N):
+        for j in range(M):
+            ioumat[i][j] = arr_iou_eval(arres1[i], arres2[j])
+    return ioumat 
+         
 
 import numpy as np
 from sklearn.metrics import confusion_matrix
