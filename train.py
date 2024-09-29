@@ -66,7 +66,7 @@ from utils.plots import plot_evolve
 from utils.torch_utils import (EarlyStopping, ModelEMA, de_parallel, select_device, smart_DDP, smart_optimizer,
                                smart_resume, torch_distributed_zero_first)
 
-from utils.debug import draw_save,batch_draw_save,batch_draw_mask_save,batch_draw_arr_save
+from utils.debug import draw_save,batch_draw_save, batch_draw_mask_save, batch_draw_arr_save, batch_draw_everything_save
 import sys
 
 LOCAL_RANK = int(os.getenv('LOCAL_RANK', -1))  # https://pytorch.org/docs/stable/elastic/run.html
@@ -303,6 +303,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             # batch_draw_mask_save(imgs,masks)
             # batch_draw_save(imgs,targets)
             # batch_draw_arr_save(imgs,arrs)
+            # batch_draw_everything_save(imgs, targets, masks, arrs)
             # continue 
             callbacks.run('on_train_batch_start')
             ni = i + nb * epoch  # number integrated batches (since train start)

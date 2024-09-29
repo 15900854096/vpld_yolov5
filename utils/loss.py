@@ -355,9 +355,9 @@ class ComputeLoss:
                 if n:
                     Aselect = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)
                     Aselect[Ab, Aa, Agj, Agi] = 1
-                    list1 = random.choices(rowlist, k = n * hyp["NEG_POS_RATE"])
-                    list2 = random.choices(collist, k = n * hyp["NEG_POS_RATE"])
-                    Aselect[Ab.repeat(hyp["NEG_POS_RATE"]), Aa.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1 
+                    list1 = random.choices(rowlist, k = n * hyp["NEG_POS_RATE"]*2)
+                    list2 = random.choices(collist, k = n * hyp["NEG_POS_RATE"]*2)
+                    Aselect[Ab.repeat(hyp["NEG_POS_RATE"]*2), Aa.repeat(hyp["NEG_POS_RATE"]*2), list1, list2] = 1 
                 
                 else:
                     Aselect = torch.ones(pi.shape[:4], dtype=pi.dtype, device=self.device)

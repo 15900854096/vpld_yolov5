@@ -1434,9 +1434,10 @@ def non_max_suppression_arr(
 def nms_by_distance_arr(boxes,nms_thresh=20):
     #  0  1  2  3  4   5   6  7   8    9    10   11   12 
     # obj Ax Ay Bc Bs Blen Cc Cs Clen cls1 cls2 cls3 cls4
-    tmp = np.zeros((boxes.shape[0], 2))
+    tmp = np.zeros((boxes.shape[0], 3))
     tmp[:,0:1] = boxes[:,1:2] # x1
     tmp[:,1:2] = boxes[:,2:3] # y1
+    tmp[:,2:3] = boxes[:,0:1] # y1
     boxes = tmp
     keep_indices = []
     # 从大到小
@@ -1448,7 +1449,7 @@ def nms_by_distance_arr(boxes,nms_thresh=20):
         for j in range(len(order)):
             if order[j] != i:
                 dist = disPts(boxes[i] ,boxes[order[j]]) #bbox_iou_eval(boxes[i],boxes[order[j]])
-                if dist > nms_thresh:
+                if ((boxes[i][2] != boxes[order[j]][2]) or (dist > nms_thresh)):
                     not_overlaps.append(j)
         order = order[not_overlaps]
     keep_boxes = boxes[[i.item() for i in keep_indices]]
