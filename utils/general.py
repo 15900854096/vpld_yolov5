@@ -1431,7 +1431,7 @@ def non_max_suppression_arr(
             break  # time limit exceeded
     return output
 
-def nms_by_distance_arr(boxes,nms_thresh=50):
+def nms_by_distance_arr(boxes,nms_thresh=20):
     #  0  1  2  3  4   5   6  7   8    9    10   11   12 
     # obj Ax Ay Bc Bs Blen Cc Cs Clen cls1 cls2 cls3 cls4
     tmp = np.zeros((boxes.shape[0], 2))

@@ -419,10 +419,12 @@ def arr_iou_eval(arr1, arr2):
                 iou = float(inter_area) / (poly1.area + poly2.area - inter_area)
             except shapely.geos.TopologicalError:
                 print('shapely.geos.TopologicalError occured, iou set to 0')
-    elif (arr1[0]==arr2[0]):
+    elif (arr1[0]!=0 and 0!=arr2[0]):
         Ax1, Ay1, Bx1, By1, _, _ = arr1[1:]
         Ax2, Ay2, Bx2, By2, _, _ = arr2[1:]
-        if(math.sqrt(math.pow(Ax1-Ax2,2) + math.pow(Ay1-Ay2,2)) < 10 and math.sqrt(math.pow(Bx1-Bx2,2) + math.pow(By1-By2,2)) < 10):
+        if(    (math.sqrt(math.pow(Ax1-Ax2,2) + math.pow(Ay1-Ay2,2)) < 10) 
+           and (math.sqrt(math.pow(Bx1-Bx2,2) + math.pow(By1-By2,2)) < 10)
+           ):
             iou = 1
     return iou
         
