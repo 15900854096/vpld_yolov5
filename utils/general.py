@@ -1532,9 +1532,12 @@ def non_max_suppression_arr_new(
         box = Ax[:, 1:9]   
         conf, j = Ax[:, 9:].max(1, keepdim=True)
         x = torch.cat((box, conf, j.float()), 1)[conf.view(-1) > conf_thres] 
-        
         #  0  1  2  3  4   5   6  7   8    9 
         # Ax Ay Bc Bs Blen Cc Cs Clen obj cls
+        
+        
+        pred_arrs  = torch.zeros((0, 8), device=device)
+        pred_lines = torch.zeros((0, 8), device=device)
         temp_arrs = x[x[:,9]==ss_arrow_label]
         if (temp_arrs.shape[0]!=0): 
             temp = torch.zeros((temp_arrs.shape[0],8), device=prediction.device)
@@ -1544,7 +1547,7 @@ def non_max_suppression_arr_new(
             temp[:,4:5] = temp_arrs[:,0:1] + temp_arrs[:,5:6] * temp_arrs[:,7:8] * imgsz
             temp[:,5:6] = temp_arrs[:,1:2] + temp_arrs[:,6:7] * temp_arrs[:,7:8] * imgsz
             temp[:,6:8] = temp_arrs[:,8:10]
-            temp_arrs = temp
+            pred_arrs = temp
         
         
         temp_lines = x[x[:,9]!=ss_arrow_label]
@@ -1562,28 +1565,32 @@ def non_max_suppression_arr_new(
                         continue
                     if (
                         (temp_lines[i][9] == temp_lines[j][9] ) \
-                    and (dist(temp_lines[i][0:2], temp_dest[j][0:2])<0.3*temp_lines[j][4])\
-                    and (dist(temp_dest[i][0:2], temp_lines[j][0:2])<0.3*temp_lines[i][4])\
+                    and (disPts(temp_lines[i][0:2], temp_dest[j][0:2])<0.3*temp_lines[j][4] * imgsz)\
+                    and (disPts(temp_dest[i][0:2], temp_lines[j][0:2])<0.3*temp_lines[i][4] * imgsz)\
                     ):
                         match_list.append([i,j])
             
-            if(len(match_list)!=0):            
+            if(len(match_list)!=0):  
+                temp_lines = temp_lines.cpu()          
                 match_line =[] 
                 for idx in range(len(match_list)):
                     i,j = match_list[idx]
                     Ax, Ay, Bx, By = temp_lines[i][0],temp_lines[i][1],temp_lines[j][0],temp_lines[j][1]
                     conf = min(temp_lines[i][8],temp_lines[j][8])
                     cls_ = temp_lines[i][9]
-                    match_line.append([Ax, Ay, Bx, By, -1, -1, conf, cls_])
-                temp_lines=torch.stack(match_line, device=device) 
+                    
+                    npy = np.array([Ax, Ay, Bx, By, -1, -1, conf, cls_])
+                    npy = torch.tensor(npy).to(device)
+                    match_line.append(npy)
+                pred_lines=torch.stack(match_line, dim=0) 
                 
                 
             
         #      0  1  2  3  4  5   6   7
         # 8 = Ax Ay Bx By Cx Cy conf cls
+        output[xi] = torch.concat((pred_arrs, pred_lines),axis=0)
         
-        output[xi] = torch.concat((temp_arrs, temp_lines),axis=1)
-        
+            
         if (time.time() - t) > time_limit:
             LOGGER.warning(f'WARNING ⚠️ NMS time limit {time_limit:.3f}s exceeded')
             break  # time limit exceeded

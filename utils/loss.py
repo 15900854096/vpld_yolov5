@@ -345,8 +345,8 @@ class ComputeLoss:
                     lossxy  = self.MSEwh(Apbox[:,0:2], Atbox[i][:,0:2])#基点的损失
                     lossoth = self.MSEwh(Apbox[:,2:5], Atbox[i][:,2:5])#附着的一号点损失
                     lossoth_ = torch.zeros_like(lossoth, device=self.device)
-                    if(sum(tcls[i]==hyp["ss_arrow_label"])!=0):
-                        weight_cPt = tcls[i]==hyp["ss_arrow_label"]
+                    weight_cPt = tcls[i]==hyp["ss_arrow_label"]
+                    if(sum(weight_cPt)!=0): 
                         weight_cPt = torch.unsqueeze(weight_cPt, 1) #一维变二维 (n,1)
                         weight_cPt = torch.concat((weight_cPt,weight_cPt,weight_cPt),axis=1) #(n,1)--->(n,3)
                         lossoth_ = torch.sum(self.MSEnone(Apbox[:,5:8], Atbox[i][:,5:8]) * weight_cPt ) / torch.sum(weight_cPt)#附着的二号点损失【只有箭头才有这个二号点】
