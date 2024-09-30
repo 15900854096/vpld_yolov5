@@ -1454,3 +1454,137 @@ def nms_by_distance_arr(boxes,nms_thresh=20):
         order = order[not_overlaps]
     keep_boxes = boxes[[i.item() for i in keep_indices]]
     return keep_indices
+
+def non_max_suppression_arr_new(
+        prediction,
+        ss_arrow_label=0,
+        conf_thres=0.25,
+        iou_thres=0.45,
+        imgsz=640,
+        classes=None,
+        agnostic=False,
+        multi_label=False,
+        labels=(),
+        max_det=300,
+        nm=0,  # number of masks
+):
+    #                              0   1  2  3  4   5   6  7   8    9    10   11   12 
+    #target-subset of predictions: obj Ax Ay Bc Bs Blen Cc Cs Clen cls1 cls2 cls3 cls4
+    
+    """Non-Maximum Suppression (NMS) on inference results to reject overlapping detections
+
+    Returns:
+         list of detections, on (n,6) tensor per image [xyxy, conf, cls]
+    """
+    if isinstance(imgsz,list):
+        imgsz=imgsz[0]
+    
+    # Checks
+    assert 0 <= conf_thres <= 1, f'Invalid Confidence threshold {conf_thres}, valid values are between 0.0 and 1.0'
+    assert 0 <= iou_thres <= 1, f'Invalid IoU {iou_thres}, valid values are between 0.0 and 1.0'
+    if isinstance(prediction, (list, tuple)):  # YOLOv5 model in validation model, output = (inference_out, loss_out)
+        prediction = prediction[0]  # select only inference output
+
+    device = prediction.device
+    mps = 'mps' in device.type  # Apple MPS
+    if mps:  # MPS not fully supported yet, convert tensors to CPU before NMS
+        prediction = prediction.cpu()
+    bs = prediction.shape[0]  # batch size
+    nc = prediction.shape[2] - nm - 9  # number of classes
+
+    Axc = prediction[..., 0] > conf_thres  # candidates
+
+    # Settings
+    # min_wh = 2  # (pixels) minimum box width and height
+    max_wh = 7680  # (pixels) maximum box width and height
+    max_nms = 30000  # maximum number of boxes into torchvision.ops.nms()
+    time_limit = 0.5 + 0.05 * bs  # seconds to quit after
+    redundant = True  # require redundant detections
+    multi_label &= nc > 1  # multiple labels per box (adds 0.5ms/img)
+    merge = False  # use merge-NMS
+
+    t = time.time()
+    output = [torch.zeros((0, 8 + nm), device=prediction.device)] * bs # 8 = Ax Ay Bx By Cx Cy conf cls  base_norm1
+    for xi, x in enumerate(prediction):  # image index, image inference
+        
+        Ax = x[Axc[xi]]  # obj Ax Ay Bc Bs Blen Cc Cs Clen cls1 cls2 cls3 cls4
+
+        #  0  1  2  3  4   5   6  7   8    9    10   11   12 
+        # obj Ax Ay Bc Bs Blen Cc Cs Clen cls1 cls2 cls3 cls4
+        if not Ax.shape[0]:
+            continue
+        
+        #对置信度排序，然后转np.array, Apoint use nms  
+        Ax = Ax[Ax[:, 0].argsort(descending=True)]
+        Ax = Ax.cpu().numpy()
+        Ax_idx = nms_by_distance_arr(Ax)
+        Ax = Ax[Ax_idx]        
+        
+        if not Ax.shape[0]:
+            continue
+        
+        #  0  1  2  3  4   5   6  7   8    9    10   11   12 
+        # obj Ax Ay Bc Bs Blen Cc Cs Clen cls1 cls2 cls3 cls4
+        # Compute conf       
+        Ax[:, 9:] *= Ax[:, 0:1]  # conf = obj_conf * cls_conf
+        Ax = torch.tensor(Ax, device=prediction.device)
+    
+        box = Ax[:, 1:9]   
+        conf, j = Ax[:, 9:].max(1, keepdim=True)
+        x = torch.cat((box, conf, j.float()), 1)[conf.view(-1) > conf_thres] 
+        
+        #  0  1  2  3  4   5   6  7   8    9 
+        # Ax Ay Bc Bs Blen Cc Cs Clen obj cls
+        temp_arrs = x[x[:,9]==ss_arrow_label]
+        if (temp_arrs.shape[0]!=0): 
+            temp = torch.zeros((temp_arrs.shape[0],8), device=prediction.device)
+            temp[:,0:2] = temp_arrs[:,0:2]
+            temp[:,2:3] = temp_arrs[:,0:1] + temp_arrs[:,2:3] * temp_arrs[:,4:5] * imgsz
+            temp[:,3:4] = temp_arrs[:,1:2] + temp_arrs[:,3:4] * temp_arrs[:,4:5] * imgsz
+            temp[:,4:5] = temp_arrs[:,0:1] + temp_arrs[:,5:6] * temp_arrs[:,7:8] * imgsz
+            temp[:,5:6] = temp_arrs[:,1:2] + temp_arrs[:,6:7] * temp_arrs[:,7:8] * imgsz
+            temp[:,6:8] = temp_arrs[:,8:10]
+            temp_arrs = temp
+        
+        
+        temp_lines = x[x[:,9]!=ss_arrow_label]
+        if (temp_lines.shape[0]!=0):
+            temp_dest = torch.zeros((temp_lines.shape[0],2), device=prediction.device)
+            temp_dest[:,0:1] = temp_lines[:,0:1] + temp_lines[:,2:3] * temp_lines[:,4:5] * imgsz
+            temp_dest[:,1:2] = temp_lines[:,1:2] + temp_lines[:,3:4] * temp_lines[:,4:5] * imgsz
+            
+            match_list=[]
+            for i in range(temp_lines.shape[0]):
+                if(i in list(np.array(match_list).flatten())):
+                    continue
+                for j in range(i, temp_lines.shape[0]):
+                    if(j in list(np.array(match_list).flatten())):
+                        continue
+                    if (
+                        (temp_lines[i][9] == temp_lines[j][9] ) \
+                    and (dist(temp_lines[i][0:2], temp_dest[j][0:2])<0.3*temp_lines[j][4])\
+                    and (dist(temp_dest[i][0:2], temp_lines[j][0:2])<0.3*temp_lines[i][4])\
+                    ):
+                        match_list.append([i,j])
+            
+            if(len(match_list)!=0):            
+                match_line =[] 
+                for idx in range(len(match_list)):
+                    i,j = match_list[idx]
+                    Ax, Ay, Bx, By = temp_lines[i][0],temp_lines[i][1],temp_lines[j][0],temp_lines[j][1]
+                    conf = min(temp_lines[i][8],temp_lines[j][8])
+                    cls_ = temp_lines[i][9]
+                    match_line.append([Ax, Ay, Bx, By, -1, -1, conf, cls_])
+                temp_lines=torch.stack(match_line, device=device) 
+                
+                
+            
+        #      0  1  2  3  4  5   6   7
+        # 8 = Ax Ay Bx By Cx Cy conf cls
+        
+        output[xi] = torch.concat((temp_arrs, temp_lines),axis=1)
+        
+        if (time.time() - t) > time_limit:
+            LOGGER.warning(f'WARNING ⚠️ NMS time limit {time_limit:.3f}s exceeded')
+            break  # time limit exceeded
+    return output

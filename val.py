@@ -40,7 +40,7 @@ from models.common import DetectMultiBackend
 from utils.callbacks import Callbacks
 from utils.dataloaders import create_dataloader
 from utils.general import (LOGGER, TQDM_BAR_FORMAT, Profile, check_dataset, check_img_size, check_requirements,
-                           check_yaml, coco80_to_coco91_class, colorstr, increment_path, non_max_suppression, non_max_suppression_arr,
+                           check_yaml, coco80_to_coco91_class, colorstr, increment_path, non_max_suppression, non_max_suppression_arr, non_max_suppression_arr_new,
                            print_args, scale_boxes, xywh2xyxy, xyxy2xywh, default_vlot_depth, default_hlot_depth, default_hlot_min_width)
 from utils.metrics import ConfusionMatrix, ap_per_class, box_iou, boxes_iou_matrix, arres_iou_matrix, StreamSegMetrics
 from utils.plots import output_to_target, plot_images, plot_val_study
@@ -282,7 +282,16 @@ def run(
                 fs_buffer = torch.max(preds["fs"][0],dim=1).indices.cpu()  #NCHW float--->NHW index， max不仅会求出dim维度的那个最大值，而且还会消除dim这个维度
 
             if(hyp["task_ss"]):
-                ss_buffer = non_max_suppression_arr(preds["ss"],
+                # ss_buffer = non_max_suppression_arr(preds["ss"],
+                #                         conf_thres,
+                #                         iou_thres,
+                #                         imgsz,
+                #                         labels=lb,
+                #                         multi_label=True,
+                #                         agnostic=single_cls,
+                #                         max_det=max_det)
+                ss_buffer = non_max_suppression_arr_new(preds["ss"],
+                                        hyp["ss_arrow_label"],
                                         conf_thres,
                                         iou_thres,
                                         imgsz,

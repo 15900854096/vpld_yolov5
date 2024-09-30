@@ -47,7 +47,7 @@ ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 from models.common import DetectMultiBackend
 from utils.dataloaders import IMG_FORMATS, VID_FORMATS, LoadImages, LoadScreenshots, LoadStreams
 from utils.general import (LOGGER, Profile, check_file, check_img_size, check_imshow, check_requirements, colorstr, cv2,
-                           increment_path, non_max_suppression, print_args, scale_boxes, strip_optimizer, xyxy2xywh, elimination_holes, non_max_suppression_arr)
+                           increment_path, non_max_suppression, print_args, scale_boxes, strip_optimizer, xyxy2xywh, elimination_holes, non_max_suppression_arr, non_max_suppression_arr_new)
 from utils.debug import *
 from utils.plots import Annotator, colors, save_one_box
 from utils.torch_utils import select_device, smart_inference_mode
@@ -155,7 +155,9 @@ def run(
             if(hyp["task_fs"]):
                 pred[0]["fs"][0] = torch.max(pred[0]["fs"][0],dim=1).indices.cpu()  #1CHW float--->1HW index， max不仅会求出dim维度的那个最大值，而且还会消除dim这个维度          
             if(hyp["task_ss"]):
-                pred[0]["ss"][0] = non_max_suppression_arr(pred[0]["ss"], conf_thres, iou_thres, imgsz[0], classes, agnostic_nms, max_det=max_det) #1CHW float--->1HW index， max不仅会求出dim维度的那个最大值，而且还会消除dim这个维度          
+                #pred[0]["ss"][0] = non_max_suppression_arr(pred[0]["ss"], conf_thres, iou_thres, imgsz[0], classes, agnostic_nms, max_det=max_det) #1CHW float--->1HW index， max不仅会求出dim维度的那个最大值，而且还会消除dim这个维度          
+                pred[0]["ss"][0] = non_max_suppression_arr_new(pred[0]["ss"], hyp["ss_arrow_label"], conf_thres, iou_thres, imgsz[0], classes, agnostic_nms, max_det=max_det) #1CHW float--->1HW index， max不仅会求出dim维度的那个最大值，而且还会消除dim这个维度          
+
 
         # Second-stage classifier (optional)
         # pred = utils.general.apply_classifier(pred, classifier_model, im, im0s)
