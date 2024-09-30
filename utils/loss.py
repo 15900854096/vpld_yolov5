@@ -137,6 +137,7 @@ class ComputeLoss:
         MSEwh = nn.MSELoss(reduction='mean')
         MSEthetaAD = nn.MSELoss(reduction='none')
         MSEobj = nn.MSELoss(reduction='none')
+        MSEnone = nn.MSELoss(reduction='none')
 
         # Class label smoothing https://arxiv.org/pdf/1902.04103.pdf eqn 3
         self.cp, self.cn = smooth_BCE(eps=h.get('label_smoothing', 0.0))  # positive, negative BCE targets
@@ -154,6 +155,7 @@ class ComputeLoss:
         self.foclaloss = FocalLossDeeplabv3plus(ignore_index=255, size_average=True) #nn.MSELoss(reduction='sum') # MultiClassDiceLoss() #nn.MSELoss(reduction='sum')
         self.MSEobj = MSEobj
         self.MSEthetaAD = MSEthetaAD
+        self.MSEnone = MSEnone
         self.MutilDice = MultiClassDiceLoss()
         self.na = m.na  # number of anchors
         self.nc = m.nc  # number of classes
@@ -338,11 +340,12 @@ class ComputeLoss:
                     #激活一下
                     Apxy = Apxy.sigmoid()
                     Apot = torch.cat( (Apot[:,0:2].tanh(), Apot[:,2:3].sigmoid(), Apot[:,3:5].tanh(), Apot[:,5:6].sigmoid() ) , dim=1 )
-                    Apbox = torch.cat((Apxy, Apot), 1)
+                    Apbox = torch.cat((Apxy, Apot), 1) #0Ax 1Ay 2Bc 3Bs 4Blen 5Cc 6Cs 7Clen
                 
-                    lossxy  = self.MSEwh(Apbox[:,0:2], Atbox[i][:,0:2])
-                    lossoth = self.MSEwh(Apbox[:,2:], Atbox[i][:,2:])
-                    lbox_arr += lossxy * 1 + lossoth * 2 #每一个都是平均损失，但是做了加和的处理
+                    lossxy  = self.MSEwh(Apbox[:,0:2], Atbox[i][:,0:2])#基点的损失
+                    lossoth = self.MSEwh(Apbox[:,2:5], Atbox[i][:,2:5])#附着的一号点损失
+                    lossoth_ = self.MSEnone(Apbox[:,5:8], Atbox[i][:,5:8]) * (tcls[i]==0)#附着的二号点损失【只有箭头才有这个二号点】
+                    lbox_arr += lossxy * 1 + lossoth * 2 + lossoth_ * 2 #每一个都是平均损失，但是做了加和的处理
                         
                     Atobj[Ab, Aa, Agj, Agi] = 1  # iou ratio
 
@@ -571,24 +574,58 @@ class ComputeLoss:
     
     def build_arr_targets(self, p, arrs):   
         #translation
-        #                        A       B       C     
-        #           0      1   2   3   4   5   6   7 
+        #                     A       B       C     
+        #           0   1   2   3   4   5   6   7 
         #arrs: img_id  cls  Ax  Ay  Bx  By  Cx  Cy
-        theta_AB = torch.atan2(arrs[:,5:6] - arrs[:,3:4],arrs[:,4:5] - arrs[:,2:3])
-        theta_AC = torch.atan2(arrs[:,7:8]  - arrs[:,3:4],arrs[:,6:7] - arrs[:,2:3])
+        # theta_AB = torch.atan2(arrs[:,5:6] - arrs[:,3:4],arrs[:,4:5] - arrs[:,2:3])
+        # theta_AC = torch.atan2(arrs[:,7:8]  - arrs[:,3:4],arrs[:,6:7] - arrs[:,2:3])
 
-        lengt_AB = torch.sqrt(  torch.pow(arrs[:,4:5] - arrs[:,2:3],2) +  torch.pow(arrs[:,5:6] - arrs[:,3:4],2) )
-        lengt_AC = torch.sqrt(  torch.pow(arrs[:,6:7] - arrs[:,2:3],2) +  torch.pow(arrs[:,7:8] - arrs[:,3:4],2) )
+        # lengt_AB = torch.sqrt(  torch.pow(arrs[:,4:5] - arrs[:,2:3],2) +  torch.pow(arrs[:,5:6] - arrs[:,3:4],2) )
+        # lengt_AC = torch.sqrt(  torch.pow(arrs[:,6:7] - arrs[:,2:3],2) +  torch.pow(arrs[:,7:8] - arrs[:,3:4],2) )
         
-        tmp = torch.cat((torch.zeros_like(arrs,device=self.device),torch.zeros(arrs.shape[0],2,device=self.device)),dim=1)
-        tmp[:,0:4] = arrs[:,0:4]
-        tmp[:,4:5] = torch.cos(theta_AB)
-        tmp[:,5:6] = torch.sin(theta_AB)
-        tmp[:,6:7] = lengt_AB
-        tmp[:,7:8] = torch.cos(theta_AC)
-        tmp[:,8:9] = torch.sin(theta_AC)
-        tmp[:,9:10]  = lengt_AC
-        arrs=tmp
+        # tmp = torch.cat((torch.zeros_like(arrs,device=self.device),torch.zeros(arrs.shape[0],2,device=self.device)),dim=1)
+        # tmp[:,0:4] = arrs[:,0:4]
+        # tmp[:,4:5] = torch.cos(theta_AB)
+        # tmp[:,5:6] = torch.sin(theta_AB)
+        # tmp[:,6:7] = lengt_AB
+        # tmp[:,7:8] = torch.cos(theta_AC)
+        # tmp[:,8:9] = torch.sin(theta_AC)
+        # tmp[:,9:10]  = lengt_AC
+        # arrs=tmp
+        
+        arrs_ = arrs[arrs[:,1]==0]
+        lines_ = arrs[arrs[:,1]!=0]
+        arr_num , lines_num = arrs_.shape[0], lines_.shape[0]
+        tmp = torch.zeros(arr_num+lines_num*2, 10, device=self.device)
+        
+        #add arr: img_id  cls  Ax  Ay  Bx  By  Cx  Cy
+        theta_AB = torch.atan2(arrs_[:,5:6] - arrs_[:,3:4],arrs_[:,4:5] - arrs_[:,2:3])
+        theta_AC = torch.atan2(arrs_[:,7:8]  - arrs_[:,3:4],arrs_[:,6:7] - arrs_[:,2:3])
+        lengt_AB = torch.sqrt(  torch.pow(arrs_[:,4:5] - arrs_[:,2:3],2) +  torch.pow(arrs_[:,5:6] - arrs_[:,3:4],2) )
+        lengt_AC = torch.sqrt(  torch.pow(arrs_[:,6:7] - arrs_[:,2:3],2) +  torch.pow(arrs_[:,7:8] - arrs_[:,3:4],2) )
+        tmp[:arr_num,0:4] = arrs_[:,0:4]
+        tmp[:arr_num,4:5] = torch.cos(theta_AB)
+        tmp[:arr_num,5:6] = torch.sin(theta_AB)
+        tmp[:arr_num,6:7] = lengt_AB
+        tmp[:arr_num,7:8] = torch.cos(theta_AC)
+        tmp[:arr_num,8:9] = torch.sin(theta_AC)
+        tmp[:arr_num,9:10]  = lengt_AC
+        #add line: img_id  cls  Ax  Ay  Bx  By
+        theta_AB = torch.atan2(lines_[:,5:6] - lines_[:,3:4],lines_[:,4:5] - lines_[:,2:3])
+        lengt_AB = torch.sqrt(  torch.pow(lines_[:,4:5] - lines_[:,2:3],2) +  torch.pow(lines_[:,5:6] - lines_[:,3:4],2) )
+        tmp[arr_num:arr_num+lines_num, 0:4] = lines_[:,0:4]
+        tmp[arr_num:arr_num+lines_num, 4:5] = torch.cos(theta_AB)
+        tmp[arr_num:arr_num+lines_num, 5:6] = torch.sin(theta_AB)
+        tmp[arr_num:arr_num+lines_num, 6:7] = lengt_AB
+        
+        theta_BA = torch.atan2(lines_[:,3:4] - lines_[:,5:6] , lines_[:,2:3] - lines_[:,4:5])
+        tmp[arr_num+lines_num:arr_num+lines_num*2, 0:2] = lines_[:,0:2]
+        tmp[arr_num+lines_num:arr_num+lines_num*2, 2:4] = lines_[:,4:6]
+        tmp[arr_num+lines_num:arr_num+lines_num*2, 4:5] = torch.cos(theta_BA)
+        tmp[arr_num+lines_num:arr_num+lines_num*2, 5:6] = torch.sin(theta_BA)
+        tmp[arr_num+lines_num:arr_num+lines_num*2, 6:7] = lengt_AB
+        arrs = tmp
+        
         #   0     1   2  3  4  5   6   7  8   9     
         #img_id  cls Ax Ay Bc Bs Blen Cc Cs Clen
         

@@ -412,6 +412,24 @@ def gt_flipud(t):
     t=np.concatenate([c,p1,p0,p3,p2],axis=1)
     return t
 
+def arr_flipud(t):
+    arrs = t[t[:,0]==0]
+    lines = t[t[:,0]!=0]
+    
+    c,p0,p1,p2 =  np.split(arrs , [1, 3, 5], axis=1)
+    p0[:,1]=1-p0[:,1]
+    p1[:,1]=1-p1[:,1]
+    p2[:,1]=1-p2[:,1]
+    arrs=np.concatenate([c,p0,p2,p1],axis=1)
+    
+    c, p0, p1, puseless =  np.split(lines , [1, 3, 5], axis=1)
+    p0[:,1]=1-p0[:,1]
+    p1[:,1]=1-p1[:,1]
+    lines=np.concatenate([c,p1,p0,puseless],axis=1)
+    
+    t=np.concatenate([arrs,lines],axis=0)
+    return t
+
 def gt_fliplr(t):
     c,p0,p1,p2,p3 =  np.split(t , [1, 3, 5, 7], axis=1)
     p0[:,0]=1-p0[:,0]
@@ -419,6 +437,24 @@ def gt_fliplr(t):
     p2[:,0]=1-p2[:,0]
     p3[:,0]=1-p3[:,0]
     t=np.concatenate([c,p1,p0,p3,p2],axis=1)
+    return t
+
+def arr_fliplr(t):
+    arrs = t[t[:,0]==0]
+    lines = t[t[:,0]!=0]
+    
+    c,p0,p1,p2 =  np.split(arrs , [1, 3, 5], axis=1)
+    p0[:,0]=1-p0[:,0]
+    p1[:,0]=1-p1[:,0]
+    p2[:,0]=1-p2[:,0]
+    arrs=np.concatenate([c,p0,p2,p1],axis=1)
+    
+    c, p0, p1, puseless =  np.split(lines , [1, 3, 5], axis=1)
+    p0[:,0]=1-p0[:,0]
+    p1[:,0]=1-p1[:,0]
+    lines=np.concatenate([c,p1,p0,puseless],axis=1)
+    
+    t=np.concatenate([arrs,lines],axis=0)
     return t
 
 def gt_rotate(t,oW,oH,nW, nH,M):
@@ -445,6 +481,26 @@ def gt_rotate(t,oW,oH,nW, nH,M):
     p3=tmp3
 
     return np.concatenate([c,p0,p1,p2,p3],axis=1)
+
+def arr_rotate(t,oW,oH,nW, nH,M):
+    c,p0,p1,p2 =  np.split(t , [1, 3, 5], axis=1)
+    
+    tmp0 = np.zeros_like(p0)
+    tmp0[:,0]=(M[0,0]*p0[:,0]*oW+M[0,1]*p0[:,1]*oH+1*M[0,2])/nW
+    tmp0[:,1]=(M[1,0]*p0[:,0]*oW+M[1,1]*p0[:,1]*oH+1*M[1,2])/nH
+    p0=tmp0
+    
+    tmp1 = np.zeros_like(p1)  
+    tmp1[:,0]=(M[0,0]*p1[:,0]*oW+M[0,1]*p1[:,1]*oH+1*M[0,2])/nW
+    tmp1[:,1]=(M[1,0]*p1[:,0]*oW+M[1,1]*p1[:,1]*oH+1*M[1,2])/nH
+    p1=tmp1
+
+    tmp2 = np.zeros_like(p2)
+    tmp2[:,0]=(M[0,0]*p2[:,0]*oW+M[0,1]*p2[:,1]*oH+1*M[0,2])/nW
+    tmp2[:,1]=(M[1,0]*p2[:,0]*oW+M[1,1]*p2[:,1]*oH+1*M[1,2])/nH
+    p2=tmp2
+
+    return np.concatenate([c,p0,p1,p2],axis=1)
 
 def rotate_bound(image, angle):
     # grab the dimensions of the image and then determine the

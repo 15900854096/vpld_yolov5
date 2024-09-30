@@ -30,20 +30,20 @@ translate: 0.1  # image translation (+/- fraction)
 scale: 0.5  # image scale (+/- gain)
 shear: 0.0  # image shear (+/- deg)
 perspective: 0.0  # image perspective (+/- fraction), range 0-0.001
-flipud: 0  # image flip up-down (probability)
-fliplr: 0  # image flip left-right (probability)
-rotate: 0  # image flip up-down (probability)
+flipud: 0.5  # image flip up-down (probability)
+fliplr: 0.5  # image flip left-right (probability)
+rotate: 0.3  # image flip up-down (probability)
 resize: 0    # image resize (probability)
 mosaic: 0.0  # image mosaic (probability)
 mixup: 0.0  # image mixup (probability)
 copy_paste: 0.0  # segment copy-paste (probability)
 
-hsv: 0
-cutblock: 0 #0.1
-rain: 0
-sunlight: 0
-GaussianNoise: 0
-AddPepperSaltNoise: 0
+hsv: 0.5
+cutblock: 0.2 #0.1
+rain: 0.15
+sunlight: 0.15
+GaussianNoise: 0.15
+AddPepperSaltNoise: 0.15
 
 task_vpld: 1
 vpld_weight: 1

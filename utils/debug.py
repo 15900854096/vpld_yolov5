@@ -4,6 +4,7 @@ import numpy as np
 import sys
 import copy
 import torch
+import os
 
 dict_col={
     0:[255,0,0],
@@ -107,7 +108,7 @@ def batch_draw_arr_save(imgs,arress):
             sys.exit()
             
 
-def batch_draw_everything_save(imgs, labelses, masks, arress):
+def batch_draw_everything_save(imgs, labelses, masks, arress, paths):
     global sscnt
     
     imgs = np.array(imgs) #nchw grb
@@ -122,6 +123,7 @@ def batch_draw_everything_save(imgs, labelses, masks, arress):
         mask   = masks[idx]
         labels = labelses[labelses[:,0] == idx]
         arres  = arress[arress[:,0] == idx]
+        path = paths[idx] 
         
         img = img.transpose((1, 2, 0))[:,:,::-1] #chw rgb-> hwc rgb ->hwc bgr
         
@@ -150,9 +152,12 @@ def batch_draw_everything_save(imgs, labelses, masks, arress):
             if(arr[1]==0):
                 p3 = (round(float(arr[6]*w)) , round(float(arr[7]*h)))
                 cv.arrowedLine(img, p2, p3, point_color, thickness, lineType)  
-                
-        cv2.imwrite(r"./xuqing/flipud/all_%06d.jpg"%sscnt, img)
-        print("save img to ",r"./xuqing/flipud/all_%06d.jpg"%sscnt)
+        
+        name = os.path.basename(path) 
+        jobid = os.path.basename(os.path.dirname(os.path.dirname(path)))
+        dest = r"./xuqing/flipud/%s_%s_%06d.jpg"%(jobid,name,sscnt)
+        cv2.imwrite(dest, img)
+        print("save img to ", dest)
         sscnt+=1
-        if(sscnt>5000):
+        if(sscnt>100):
             sys.exit()

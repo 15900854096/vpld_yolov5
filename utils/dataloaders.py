@@ -39,7 +39,7 @@ from utils.general import (DATASETS_DIR, LOGGER, NUM_THREADS, TQDM_BAR_FORMAT, c
 from utils.torch_utils import torch_distributed_zero_first
 
 
-from utils.augmentations import gt_flipud,gt_fliplr,gt_rotate,rotate_bound,image_gt_data_resize_all,cutblock
+from utils.augmentations import gt_flipud,gt_fliplr,gt_rotate,rotate_bound,image_gt_data_resize_all,cutblock, arr_flipud, arr_fliplr, arr_rotate
 
 # Parameters
 HELP_URL = 'See https://docs.ultralytics.com/yolov5/tutorials/train_custom_data'
@@ -766,7 +766,7 @@ class LoadImagesAndLabels(Dataset):
             
         #if nl:
         #    labels[:, 1:5] = xyxy2xywhn(labels[:, 1:5], w=img.shape[1], h=img.shape[0], clip=True, eps=1E-3)
-        if 0: #self.augment:
+        if self.augment:
             # Albumentations
             #img, labels = self.albumentations(img, labels)
             nl = len(labels)  # update after albumentations
@@ -796,6 +796,8 @@ class LoadImagesAndLabels(Dataset):
                 mask = np.flipud(mask)
                 if nl:
                     labels = gt_flipud(labels) #labels[:, 2] = 1 - labels[:, 2]
+                if len(arrs):
+                    arrs = arr_flipud(arrs) #labels[:, 2] = 1 - labels[:, 2]
 
             # Flip left-right
             if random.random() < hyp['fliplr']:
@@ -803,6 +805,8 @@ class LoadImagesAndLabels(Dataset):
                 mask = np.fliplr(mask)
                 if nl:
                     labels = gt_fliplr(labels) #labels[:, 1] = 1 - labels[:, 1]
+                if len(arrs):
+                    arrs = arr_fliplr(arrs) #labels[:, 2] = 1 - labels[:, 2]
             
             if random.random() < hyp['rotate']:
                 h,w,c = img.shape
@@ -813,6 +817,8 @@ class LoadImagesAndLabels(Dataset):
                 mask = cv2.resize(mask, (w, h), interpolation=cv2.INTER_LINEAR)
                 if nl:
                     labels = gt_rotate(labels, w, h, neww, newh, M)
+                if len(arrs):
+                    arrs = arr_rotate(arrs, w, h, neww, newh, M) #labels[:, 2] = 1 - labels[:, 2]
         
             if random.random() < hyp['resize']:
                 img, labels = image_gt_data_resize_all(img, labels)
