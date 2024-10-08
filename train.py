@@ -303,7 +303,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             # batch_draw_mask_save(imgs,masks)
             # batch_draw_save(imgs,targets)
             # batch_draw_arr_save(imgs,arrs)
-            # batch_draw_everything_save(imgs, targets, masks, arrs)
+            # batch_draw_everything_save(imgs, targets, masks, arrs, paths)
             # continue 
             callbacks.run('on_train_batch_start')
             ni = i + nb * epoch  # number integrated batches (since train start)

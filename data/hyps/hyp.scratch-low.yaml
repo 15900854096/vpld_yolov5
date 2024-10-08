@@ -56,6 +56,9 @@ task_ss: 1
 ss_weight: 2
 ss_num_class: 4
 ss_arrow_label: 0 #因为箭头要找三个点，与其他目标不一样，所以需要备注出来
+ss_box: 2  # box loss gain
+ss_cls: 1 #0.5  # cls loss gain
+ss_obj: 1  # obj loss gain (scale with pixels)
 
 holes_rate: 0
 

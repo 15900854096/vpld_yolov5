@@ -159,5 +159,5 @@ def batch_draw_everything_save(imgs, labelses, masks, arress, paths):
         cv2.imwrite(dest, img)
         print("save img to ", dest)
         sscnt+=1
-        if(sscnt>100):
+        if(sscnt>20):
             sys.exit()

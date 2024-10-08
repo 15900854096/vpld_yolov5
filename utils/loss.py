@@ -356,7 +356,7 @@ class ComputeLoss:
                     Atobj[Ab, Aa, Agj, Agi] = 1  # iou ratio
 
                     # Classification
-                    if self.nc > 1:  # cls loss (only if multiple classes)
+                    if self.narr > 1:  # cls loss (only if multiple classes)
                         t = torch.full_like(pcls, self.cn, device=self.device)  # targets
                         t[range(n), tcls[i]] = self.cp
                         lcls_arr += self.MSEwh(pcls.sigmoid(), t) #self.BCEcls(pcls, t)  # BCE
@@ -374,9 +374,9 @@ class ComputeLoss:
                 Aobji = torch.sum(self.MSEobj(pi[..., 0].sigmoid(), Atobj) * Aselect) / torch.sum(Aselect)
                 lobj_arr += Aobji * self.balance[i]  # obj loss
                 
-        lbox_arr *= self.hyp['box'] * ss_weight
-        lobj_arr *= self.hyp['obj'] * ss_weight
-        lcls_arr *= self.hyp['cls'] * ss_weight
+        lbox_arr *= self.hyp['ss_box'] * ss_weight
+        lobj_arr *= self.hyp['ss_obj'] * ss_weight
+        lcls_arr *= self.hyp['ss_cls'] * ss_weight
         bs_arr = Atobj.shape[0] # batch size
                 
         if self.autobalance:

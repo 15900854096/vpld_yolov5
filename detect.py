@@ -196,8 +196,9 @@ def run(
                     for Ax, Ay, Bx, By, Cx, Cy, conf, cls in reversed(arrs):
                         Ax, Ay, Bx, By, Cx, Cy = round(Ax), round(Ay), round(Bx), round(By), round(Cx), round(Cy)
                         cv2.line(im0, (Ax, Ay), (Bx, By), color, 2, 4)
-                        cv2.line(im0, (Bx, By), (Cx, Cy), color, 2, 4)
-                        cv2.line(im0, (Cx, Cy), (Ax, Ay), color, 2, 4)
+                        if(cls==hyp["ss_arrow_label"]):
+                            cv2.line(im0, (Bx, By), (Cx, Cy), color, 2, 4)
+                            cv2.line(im0, (Cx, Cy), (Ax, Ay), color, 2, 4)
                     
                 
             p = Path(p)  # to Path

@@ -1330,6 +1330,7 @@ def elimination_holes_singlelabel(mask, label, rate):#把被label包围的空洞
         cv2.fillPoly(mask, [r], label)
     return mask
 
+#这个函数不要用了
 def non_max_suppression_arr(
         prediction,
         conf_thres=0.25,
@@ -1390,17 +1391,6 @@ def non_max_suppression_arr(
         if not Ax.shape[0]:
             continue
         
-        #对置信度排序，然后转np.array
-        Ax = Ax[Ax[:, 0].argsort(descending=True)]
-        Ax = Ax.cpu().numpy()
-            
-        #Apoint use nms   
-        Ax_idx = nms_by_distance_arr(Ax)
-        Ax = Ax[Ax_idx]        
-        
-        if not Ax.shape[0]:
-            continue
-        
         #  0  1  2  3  4   5   6  7   8    9    10   11   12 
         # obj Ax Ay Bc Bs Blen Cc Cs Clen cls1 cls2 cls3 cls4
         # Compute conf       
@@ -1412,6 +1402,14 @@ def non_max_suppression_arr(
         mask = Ax[:, new_mi:]
         conf, j = Ax[:, 9:new_mi].max(1, keepdim=True)
         x = torch.cat((box, conf, j.float(), mask), 1)[conf.view(-1) > conf_thres] 
+        
+        if not x.shape[0]:
+            continue
+        
+        #对置信度排序，然后转np.array, Apoint use nms  
+        x = x[x[:, 8].argsort(descending=True)] 
+        x_idx = nms_by_distance_arr(x.cpu().numpy())
+        x = x[x_idx]        
         
         #  0  1  2  3  4   5   6  7   8    9 
         # Ax Ay Bc Bs Blen Cc Cs Clen obj cls
@@ -1431,13 +1429,13 @@ def non_max_suppression_arr(
             break  # time limit exceeded
     return output
 
-def nms_by_distance_arr(boxes,nms_thresh=20):
-    #  0  1  2  3  4   5   6  7   8    9    10   11   12 
-    # obj Ax Ay Bc Bs Blen Cc Cs Clen cls1 cls2 cls3 cls4
+def nms_by_distance_arr(boxes, ss_arrow_label=0, nms_thresh=20):
+    #  0  1  2  3  4   5   6    7   8   9   
+    #  Ax Ay Bc Bs Blen Cc Cs Clen obj cls
     tmp = np.zeros((boxes.shape[0], 3))
-    tmp[:,0:1] = boxes[:,1:2] # x1
-    tmp[:,1:2] = boxes[:,2:3] # y1
-    tmp[:,2:3] = boxes[:,0:1] # y1
+    tmp[:,0:1] = boxes[:,0:1] # x1
+    tmp[:,1:2] = boxes[:,1:2] # y1
+    tmp[:,2:3] = boxes[:,9:10] # cls
     boxes = tmp
     keep_indices = []
     # 从大到小
@@ -1449,7 +1447,7 @@ def nms_by_distance_arr(boxes,nms_thresh=20):
         for j in range(len(order)):
             if order[j] != i:
                 dist = disPts(boxes[i] ,boxes[order[j]]) #bbox_iou_eval(boxes[i],boxes[order[j]])
-                if ((boxes[i][2] != boxes[order[j]][2]) or (dist > nms_thresh)):
+                if ((boxes[i][2] != boxes[order[j]][2]) or (dist > (2*nms_thresh if boxes[i][2]==ss_arrow_label else nms_thresh))):
                     not_overlaps.append(j)
         order = order[not_overlaps]
     keep_boxes = boxes[[i.item() for i in keep_indices]]
@@ -1514,15 +1512,6 @@ def non_max_suppression_arr_new(
         if not Ax.shape[0]:
             continue
         
-        #对置信度排序，然后转np.array, Apoint use nms  
-        Ax = Ax[Ax[:, 0].argsort(descending=True)]
-        Ax = Ax.cpu().numpy()
-        Ax_idx = nms_by_distance_arr(Ax)
-        Ax = Ax[Ax_idx]        
-        
-        if not Ax.shape[0]:
-            continue
-        
         #  0  1  2  3  4   5   6  7   8    9    10   11   12 
         # obj Ax Ay Bc Bs Blen Cc Cs Clen cls1 cls2 cls3 cls4
         # Compute conf       
@@ -1535,6 +1524,13 @@ def non_max_suppression_arr_new(
         #  0  1  2  3  4   5   6  7   8    9 
         # Ax Ay Bc Bs Blen Cc Cs Clen obj cls
         
+        if not x.shape[0]:
+            continue
+        
+        #对置信度排序，然后转np.array, Apoint use nms  
+        x = x[x[:, 8].argsort(descending=True)] 
+        x_idx = nms_by_distance_arr(x.cpu().numpy(), ss_arrow_label)
+        x = x[x_idx]        
         
         pred_arrs  = torch.zeros((0, 8), device=device)
         pred_lines = torch.zeros((0, 8), device=device)
