@@ -12,6 +12,7 @@ import os
 import random
 import shutil
 import time
+from time import perf_counter_ns
 from itertools import repeat
 from multiprocessing.pool import Pool, ThreadPool
 from pathlib import Path
@@ -594,6 +595,10 @@ class LoadImagesAndLabels(Dataset):
                 pbar.desc = f'{prefix}Caching images ({b / gb:.1f}GB {cache_images})'
             pbar.close()
 
+        self.cnt=0
+        self.dataloadtime=0
+        self.dataloadtime1=0
+        
     def check_cache_ram(self, safety_margin=0.1, prefix=''):
         # Check image caching requirements vs available memory
         b, gb = 0, 1 << 30  # bytes of cached images, bytes per gigabytes
@@ -659,6 +664,7 @@ class LoadImagesAndLabels(Dataset):
     #     return self
 
     def __getitem__(self, index):
+        #function_start_t = perf_counter_ns()
         index = self.indices[index]  # linear, shuffled, or image_weights
         random.seed(time.time_ns()%(2**32 - 1))
         hyp = self.hyp
@@ -674,8 +680,10 @@ class LoadImagesAndLabels(Dataset):
 
         else:
             # Load image
+            # t1 = perf_counter_ns()
             img, (h0, w0), (h, w) = self.load_image(index)
-
+            # t2 = perf_counter_ns()
+            # self.dataloadtime1 += t2-t1
             # Letterbox
             shape = self.batch_shapes[self.batch[index]] if self.rect else self.img_size  # final letterboxed shape
             img, ratio, pad = letterbox(img, shape, auto=False, scaleup=self.augment)
@@ -723,6 +731,7 @@ class LoadImagesAndLabels(Dataset):
                 continue
             fliter_lot_idx.append(idx)
         labels = labels[fliter_lot_idx]
+        
         # if(len(fliter_lot_idx) != len(temp_labels)) :
         #     print("self.im_files[index]: ", self.im_files[index])
         #     print("fliter_lot_idx: ", fliter_lot_idx)
@@ -792,7 +801,14 @@ class LoadImagesAndLabels(Dataset):
         # Convert
         img = img.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
         img = np.ascontiguousarray(img)
-
+        
+        # self.cnt+=1
+        # function_end_t = perf_counter_ns()
+        # self.dataloadtime += function_end_t - function_start_t
+        # if(self.cnt%10000==0):
+        #     self.cnt=0
+        #     print("!!!!!!!!!!!!!!!!!!!!!dataload time : %.4f    %.4fs"%(self.dataloadtime/1000000000.0, self.dataloadtime1/1000000000.0))
+        
         return torch.from_numpy(img), labels_out, self.im_files[index], shapes
 
     def load_image(self, i):

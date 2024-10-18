@@ -16,6 +16,7 @@ train: # train images (relative to 'path')  16551 images
   - public_ps2.0
   - public_Boden
   - yunduo
+  - yantai
 val: # val images (relative to 'path')  4952 images
   - longmao/917_1310_shanghai_alizhongxin_16879_ok
   - public_ps2.0

@@ -447,6 +447,13 @@ class Cal_R_Matrix:
         from utils.general import PI
         delta = abs(delta)
         return delta if delta<PI else 2*PI-delta
+        # if delta < PI and delta > -PI:
+        #     return delta
+        # elif delta > PI:
+        #     return 2*PI-delta
+        # elif delta < -PI:
+        #     return 2*PI+delta
+        
     
     def update(self, detections, labels, sz, iou_thres=0.9):
         boxes_labels = labels[:, 1:] / sz 
@@ -469,10 +476,10 @@ class Cal_R_Matrix:
                     detection_AD_theta = torch.atan2(boxes_detections[j][7]-boxes_detections[j][1], boxes_detections[j][6]-boxes_detections[j][0])
                     detection_BC_theta = torch.atan2(boxes_detections[j][5]-boxes_detections[j][3], boxes_detections[j][4]-boxes_detections[j][2])
                     
-                    self.A_x_err.append( abs(boxes_labels[i][0] - boxes_detections[j][0]) * self.imgsz )
-                    self.A_y_err.append( abs(boxes_labels[i][1] - boxes_detections[j][1]) * self.imgsz )
-                    self.B_x_err.append( abs(boxes_labels[i][2] - boxes_detections[j][2]) * self.imgsz )
-                    self.B_y_err.append( abs(boxes_labels[i][3] - boxes_detections[j][3]) * self.imgsz )
+                    self.A_x_err.append( (boxes_labels[i][0] - boxes_detections[j][0]) * self.imgsz )
+                    self.A_y_err.append( (boxes_labels[i][1] - boxes_detections[j][1]) * self.imgsz )
+                    self.B_x_err.append( (boxes_labels[i][2] - boxes_detections[j][2]) * self.imgsz )
+                    self.B_y_err.append( (boxes_labels[i][3] - boxes_detections[j][3]) * self.imgsz )
                     self.AD_theta_err.append( self.get_real_theta(label_AD_theta - detection_AD_theta) )
                     self.BC_theta_err.append( self.get_real_theta(label_BC_theta - detection_BC_theta) )
                     self.cnt+=1
@@ -480,11 +487,11 @@ class Cal_R_Matrix:
     def get_result(self):
         if(self.cnt):
             print("cnt: ", self.cnt)
-            print("A_x_err: ",      torch.mean(torch.stack(self.A_x_err)),      torch.var(torch.stack(self.A_x_err)))
-            print("A_y_err: ",      torch.mean(torch.stack(self.A_y_err)),      torch.var(torch.stack(self.A_y_err)))
-            print("B_x_err: ",      torch.mean(torch.stack(self.B_x_err)),      torch.var(torch.stack(self.B_x_err)))
-            print("B_y_err: ",      torch.mean(torch.stack(self.B_y_err)),      torch.var(torch.stack(self.B_y_err)))
-            print("AD_theta_err: ", torch.mean(torch.stack(self.AD_theta_err)), torch.var(torch.stack(self.AD_theta_err)))
-            print("BC_theta_err: ", torch.mean(torch.stack(self.BC_theta_err)), torch.var(torch.stack(self.BC_theta_err)))
+            print("A_x_err: ",      torch.mean(torch.abs(torch.stack(self.A_x_err))),      torch.mean(torch.pow(torch.stack(self.A_x_err),2)))
+            print("A_y_err: ",      torch.mean(torch.abs(torch.stack(self.A_y_err))),      torch.mean(torch.pow(torch.stack(self.A_y_err),2)))
+            print("B_x_err: ",      torch.mean(torch.abs(torch.stack(self.B_x_err))),      torch.mean(torch.pow(torch.stack(self.B_x_err),2)))
+            print("B_y_err: ",      torch.mean(torch.abs(torch.stack(self.B_y_err))),      torch.mean(torch.pow(torch.stack(self.B_y_err),2)))
+            print("AD_theta_err: ", torch.mean(torch.abs(torch.stack(self.AD_theta_err))), torch.mean(torch.pow(torch.stack(self.AD_theta_err),2)))
+            print("BC_theta_err: ", torch.mean(torch.abs(torch.stack(self.BC_theta_err))), torch.mean(torch.pow(torch.stack(self.BC_theta_err),2)))
         else:
             print("all lot can't match")
