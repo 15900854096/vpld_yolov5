@@ -249,6 +249,11 @@ class ComputeLoss:
                           +  torch.sum(self.MSEthetaAD(Bpbox[:,2:4], Btbox[i][:,2:4]) * Bitst * BweightstheAD) / (nb*2)
                 losstheAB = torch.sum(self.MSEnone(Apbox[:,4:6], Atbox[i][:,4:6])) / (na*2) \
                           + torch.sum(self.MSEnone(Bpbox[:,4:6], Btbox[i][:,4:6])) / (nb*2)
+                # losstheAD = torch.sum(self.MSEthetaAD(torch.atan2(Apbox[:,2:3],Apbox[:,3:4]) , torch.atan2(Atbox[i][:,2:3],Atbox[i][:,3:4])) * Aitst[:,0:1] * AweightstheAD) / na  \
+                #           + torch.sum(self.MSEthetaAD(torch.atan2(Bpbox[:,2:3],Bpbox[:,3:4]) , torch.atan2(Btbox[i][:,2:3],Btbox[i][:,3:4])) * Bitst[:,0:1] * BweightstheAD) / nb 
+                # losstheAB = torch.sum(self.MSEthetaAD(torch.atan2(Apbox[:,4:5],Apbox[:,5:6]) , torch.atan2(Atbox[i][:,4:5],Atbox[i][:,5:6]))) / na  \
+                #           + torch.sum(self.MSEthetaAD(torch.atan2(Bpbox[:,4:5],Bpbox[:,5:6]) , torch.atan2(Btbox[i][:,4:5],Btbox[i][:,5:6]))) / nb 
+                          
                 losslen = torch.sum(self.MSEnone(Apbox[:,6:7], Atbox[i][:,6:7])) / (na) \
                           + torch.sum(+ self.MSEnone(Bpbox[:,6:7], Btbox[i][:,6:7])) / (nb)
                 
@@ -291,10 +296,19 @@ class ComputeLoss:
                 #     list1 = random.choices(rowlist, k = idxlist.shape[0] * hyp["NEG_POS_RATE"])
                 #     list2 = random.choices(collist, k = idxlist.shape[0] * hyp["NEG_POS_RATE"])
                 #     Aselect[image_idx.repeat(hyp["NEG_POS_RATE"]), archor_idx.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1
+                #每个图像的每层archor(实际上就一个archor)上必须有_baseline_neg个负样本
+                # pi.shape[:4] batchsize anchor_num outputbuffer_h outputbuffer_w
+                _baseline_neg = 5
+                _bs = pi.shape[0]
+                _as = pi.shape[1]
+                batch_list = torch.arange(0, _bs).repeat(_baseline_neg*_as)
+                anchor_list = torch.arange(0, _as).repeat(_baseline_neg*_bs)
+                Aselect[batch_list, anchor_list, random.choices(rowlist, k = _baseline_neg*_as*_bs),random.choices(collist, k = _baseline_neg*_as*_bs)] = 1
+                
+                Aselect[Ab, Aa, Agj, Agi] = 1 
                 list1 = random.choices(rowlist, k = na * hyp["NEG_POS_RATE"])
                 list2 = random.choices(collist, k = na * hyp["NEG_POS_RATE"])
                 Aselect[Ab.repeat(hyp["NEG_POS_RATE"]), Aa.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1
-                Aselect[Ab, Aa, Agj, Agi] = 1        
             else:
                 Aselect = torch.ones(pi.shape[:4], dtype=pi.dtype, device=self.device)
             
@@ -310,7 +324,15 @@ class ComputeLoss:
                 #     archor_idx = Ba[idxlist.squeeze()]
                 #     list1 = random.choices(rowlist, k = idxlist.shape[0] * hyp["NEG_POS_RATE"])
                 #     list2 = random.choices(collist, k = idxlist.shape[0] * hyp["NEG_POS_RATE"])
-                #     Bselect[image_idx.repeat(hyp["NEG_POS_RATE"]), archor_idx.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1   
+                #     Bselect[image_idx.repeat(hyp["NEG_POS_RATE"]), archor_idx.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1
+                #每个图像的每层archor(实际上就一个archor)上必须有_baseline_neg个负样本
+                _baseline_neg = 5
+                _bs = pi.shape[0]
+                _as = pi.shape[1]
+                batch_list = torch.arange(0, _bs).repeat(_baseline_neg*_as)
+                anchor_list = torch.arange(0, _as).repeat(_baseline_neg*_bs)
+                Bselect[batch_list, anchor_list, random.choices(rowlist, k = _baseline_neg*_as*_bs), random.choices(collist, k = _baseline_neg*_as*_bs)] = 1
+                   
                 Bselect[Bb, Ba, Bgj, Bgi] = 1
                 list1 = random.choices(rowlist, k = nb * hyp["NEG_POS_RATE"])
                 list2 = random.choices(collist, k = nb * hyp["NEG_POS_RATE"])

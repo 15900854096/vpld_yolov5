@@ -883,6 +883,11 @@ def clip_segments(segments, shape):
         segments[:, 0] = segments[:, 0].clip(0, shape[1])  # x
         segments[:, 1] = segments[:, 1].clip(0, shape[0])  # y
 
+def get_real_theta(delta):
+        from utils.general import PI
+        delta = abs(delta)
+        return delta if delta<PI else 2*PI-delta
+
 ccnt = 10
 def non_max_suppression(
         prediction,
@@ -1003,9 +1008,110 @@ def non_max_suppression(
 
                     bcangle = math.atan2(Bp[11], Bp[10])
                     adangle = math.atan2(Ap[3],  Ap[2])
+
+                    #padding start
+                    # try:
+                    #     # Ac1 = min(max(-1,Ac1),1)
+                    #     # As1 = min(max(-1,As1),1)
+                    #     # Bc1 = min(max(-1,Bc1),1)
+                    #     # Bs1 = min(max(-1,Bs1),1)
+                        
+                    #     Ac1 = Ap[2]
+                    #     As1 = Ap[3]
+                    #     Bc1 = Bp[10]
+                    #     Bs1 = Bp[11]
+
+                    #     angle1 = math.acos(Bc1) #值域[0, π]
+                    #     angle2 = angle1*-1
+                    #     angle3 = math.asin(Bs1) #值域[-π/2，π/2]
+                    #     angle4 = (-1 if angle3<0 else 1 ) * PI - angle3
+                    #     delta13 = get_real_theta(angle1-angle3)
+                    #     delta14 = get_real_theta(angle1-angle4)
+                    #     delta23 = get_real_theta(angle2-angle3)
+                    #     delta24 = get_real_theta(angle2-angle4)
+                    #     if(delta13<=delta14 and delta13<=delta23 and delta13<=delta24):
+                    #         bcangle = angle1 if(abs(Bc1)>abs(Bs1)) else angle3
+                    #     elif(delta14<=delta13 and delta14<=delta23 and delta14<=delta24):
+                    #         bcangle = angle1 if(abs(Bc1)>abs(Bs1)) else angle4
+                    #     elif(delta23<=delta13 and delta23<=delta14 and delta23<=delta24):
+                    #         bcangle = angle2 if(abs(Bc1)>abs(Bs1)) else angle3
+                    #     elif(delta24<=delta13 and delta24<=delta14 and delta24<=delta23):
+                    #         bcangle = angle2 if(abs(Bc1)>abs(Bs1)) else angle4
+                    #     else:
+                    #         print("BC wrong!!!!!!")
+                    #         print(Bc1,Bs1,delta13,delta14,delta23,delta24)
+                    #         sys.exit()
+
+                        # angle1 = math.acos(Ac1) #值域[0, π]
+                        # angle2 = angle1*-1
+                        # angle3 = math.asin(As1) #值域[-π/2，π/2]
+                        # angle4 = (-1 if angle3<0 else 1 ) * PI - angle3
+                        # delta13 = get_real_theta(angle1-angle3)
+                        # delta14 = get_real_theta(angle1-angle4)
+                        # delta23 = get_real_theta(angle2-angle3)
+                        # delta24 = get_real_theta(angle2-angle4)
+                        # if(delta13<=delta14 and delta13<=delta23 and delta13<=delta24):
+                        #     adangle = angle1 if(abs(Ac1)>abs(As1)) else angle3
+                        # elif(delta14<=delta13 and delta14<=delta23 and delta14<=delta24):
+                        #     adangle = angle1 if(abs(Ac1)>abs(As1)) else angle4
+                        # elif(delta23<=delta13 and delta23<=delta14 and delta23<=delta24):
+                        #     adangle = angle2 if(abs(Ac1)>abs(As1)) else angle3
+                        # elif(delta24<=delta13 and delta24<=delta14 and delta24<=delta23):
+                        #     adangle = angle2 if(abs(Ac1)>abs(As1)) else angle4
+                        # else:    
+                        #     print("AD wrong!!!!!!")
+                    # except:
+                    #     print(Ap[2],Ap[3],Bp[10],Bp[11])
+                    #     print(Ap[2]/math.sqrt(Ap[2]*Ap[2]+Ap[3]*Ap[3]))
+                    #     print(Ac1,As1,Bc1,Bs1)
+                    #     sys.exit()
+
+                    # if(abs(Bc1)>abs(Bs1)):
+                    #     pad_bcangle = math.acos(Bc1)  #值域[0, π]
+                    #     delta1 = get_real_theta(pad_bcangle-bcangle)
+                    #     delta2 = get_real_theta(-1*pad_bcangle-bcangle)
+                    #     if((delta1<=delta2) and  (delta1<0.1)):
+                    #         bcangle = pad_bcangle
+                    #     elif((delta2<=delta1) and  (delta2<0.1)):
+                    #         bcangle = -1*pad_bcangle
+                    #     else:
+                    #        print("!!!  ",pad_bcangle,bcangle,delta1,delta2,Bc1,Bs1)
+                    #        print("Bc something wrong!!!!!!!!!!!! ")
+                    #        sys.exit()
+                    # else:
+                    #     pad_bcangle = math.asin(Bs1)  #值域[-π/2，π/2]
+                    #     if(get_real_theta(pad_bcangle-bcangle) < 0.1):
+                    #         bcangle = pad_bcangle
+                    #     elif (get_real_theta(   (-1 if pad_bcangle<0 else 1 ) * PI - pad_bcangle   -    bcangle) < 0.1):
+                    #         bcangle = (-1 if pad_bcangle<0 else 1 ) * PI - pad_bcangle 
+                    #     else:
+                    #        print("Bs something wrong!!!!!!!!!!!! ")
+
+                    
+                    # if(abs(Ac1)>abs(As1)):
+                    #     pad_adangle = math.acos(Ac1)  #值域[0, π]
+                    #     delta1 = get_real_theta(pad_adangle-adangle)
+                    #     delta2 = get_real_theta(-1*pad_adangle-adangle)
+                    #     if((delta1<=delta2) and  (delta1<0.1)):
+                    #         adangle = pad_adangle
+                    #     elif((delta2<=delta1) and  (delta2<0.1)):
+                    #         adangle = -1*pad_adangle
+                    #     else:
+                    #        print("Ac something wrong!!!!!!!!!!!! ")
+                    # else:
+                    #     pad_adangle = math.asin(As1)  #值域[-π/2，π/2]
+                    #     if(get_real_theta(pad_adangle-adangle) < 0.1):
+                    #         adangle = pad_adangle
+                    #     elif (get_real_theta(   (-1 if pad_adangle<0 else 1 ) * PI - pad_adangle   -    adangle) < 0.1):
+                    #         adangle = (-1 if pad_adangle<0 else 1 ) * PI - pad_adangle 
+                    #     else:
+                    #        print("As something wrong!!!!!!!!!!!! ")
+                    #padding end
+
+
                     tm = math.atan2((Bp[11]+Ap[3])/2, (Bp[10]+Ap[2])/2)
                     #npy = list([point0[0], point0[1], abdis, math.cos(abangle), math.sin(abangle), math.cos(tm), math.sin(tm), mean_conf]) + cls
-                    npy = list([point0[0], point0[1], abdis, math.cos(abangle), math.sin(abangle), Ac1, As1, Bc1, Bs1, mean_conf]) + cls
+                    npy = list([point0[0], point0[1], abdis, math.cos(abangle), math.sin(abangle), math.cos(adangle), math.sin(adangle), math.cos(bcangle), math.sin(bcangle), mean_conf]) + cls
                     #npy = list([point0[0], point0[1], abdis, math.cos(abangle), math.sin(abangle), Ap[2], Ap[3], Bp[10], Bp[11], mean_conf]) + cls
                     npy = np.array(npy)
                     npy=torch.tensor(npy).to(prediction.device)
