@@ -429,6 +429,7 @@ class Cal_R_Matrix:
         self.B_y_err = []
         self.AD_theta_err = []
         self.BC_theta_err = []
+        self.search_park = []
         self.cnt = 0
         self.imgsz = imgsz
         self.polycar = np.array([270/640.0, 193/640.0, 370/640.0, 193/640.0, 370/640.0, 445/640.0, 270/640.0, 445/640.0]).reshape(4, 2)  # 四边形二维坐标表示
@@ -465,9 +466,8 @@ class Cal_R_Matrix:
         for i in range(N):
             for j in range(M):
                 iou = bbox_iou_eval(boxes_labels[i], boxes_detections[j])
-                if (    (iou > iou_thres) \
-                    and (not self.polycar.disjoint(Polygon(np.array(boxes_labels[i].cpu()).reshape(4,2)).convex_hull)) \
-                    ): 
+                is_parking_lot = not self.polycar.disjoint(Polygon(np.array(boxes_labels[i].cpu()).reshape(4,2)).convex_hull) # Returns True if A and B do not share any point in space. 
+                if (    (iou > iou_thres) ): 
                     #  0  1  2  3  4  5  6  7
                     # x1 y1 x2 y2 x3 y3 x4 y4
                     label_AD_theta = torch.atan2(boxes_labels[i][7]-boxes_labels[i][1], boxes_labels[i][6]-boxes_labels[i][0])
@@ -482,16 +482,38 @@ class Cal_R_Matrix:
                     self.B_y_err.append( (boxes_labels[i][3] - boxes_detections[j][3]) * self.imgsz )
                     self.AD_theta_err.append( self.get_real_theta(label_AD_theta - detection_AD_theta) )
                     self.BC_theta_err.append( self.get_real_theta(label_BC_theta - detection_BC_theta) )
+                    self.search_park.append( is_parking_lot )
                     self.cnt+=1
 
     def get_result(self):
-        if(self.cnt):
-            print("cnt: ", self.cnt)
-            print("A_x_err: ",      torch.mean(torch.abs(torch.stack(self.A_x_err))),      torch.mean(torch.pow(torch.stack(self.A_x_err),2)))
-            print("A_y_err: ",      torch.mean(torch.abs(torch.stack(self.A_y_err))),      torch.mean(torch.pow(torch.stack(self.A_y_err),2)))
-            print("B_x_err: ",      torch.mean(torch.abs(torch.stack(self.B_x_err))),      torch.mean(torch.pow(torch.stack(self.B_x_err),2)))
-            print("B_y_err: ",      torch.mean(torch.abs(torch.stack(self.B_y_err))),      torch.mean(torch.pow(torch.stack(self.B_y_err),2)))
-            print("AD_theta_err: ", torch.mean(torch.abs(torch.stack(self.AD_theta_err))), torch.mean(torch.pow(torch.stack(self.AD_theta_err),2)))
-            print("BC_theta_err: ", torch.mean(torch.abs(torch.stack(self.BC_theta_err))), torch.mean(torch.pow(torch.stack(self.BC_theta_err),2)))
-        else:
-            print("all lot can't match")
+        A_x_err = np.array(torch.stack(self.A_x_err).cpu())
+        A_y_err = np.array(torch.stack(self.A_y_err).cpu())
+        B_x_err = np.array(torch.stack(self.B_x_err).cpu())
+        B_y_err = np.array(torch.stack(self.B_y_err).cpu())
+        AD_theta_err = np.array(torch.stack(self.AD_theta_err).cpu())
+        BC_theta_err = np.array(torch.stack(self.BC_theta_err).cpu())
+        search_park = np.array(self.search_park)
+
+        flag = False
+        cnt = search_park[search_park==flag].shape[0]
+        if(cnt):
+            print("searching cnt: ", cnt)
+            print("searching A_x_err: ",      torch.mean(torch.abs(torch.tensor(A_x_err[search_park==flag]))),      torch.mean(torch.pow(torch.tensor(A_x_err[search_park==flag]),2)))
+            print("searching A_y_err: ",      torch.mean(torch.abs(torch.tensor(A_y_err[search_park==flag]))),      torch.mean(torch.pow(torch.tensor(A_y_err[search_park==flag]),2)))
+            print("searching B_x_err: ",      torch.mean(torch.abs(torch.tensor(B_x_err[search_park==flag]))),      torch.mean(torch.pow(torch.tensor(B_x_err[search_park==flag]),2)))
+            print("searching B_y_err: ",      torch.mean(torch.abs(torch.tensor(B_y_err[search_park==flag]))),      torch.mean(torch.pow(torch.tensor(B_y_err[search_park==flag]),2)))
+            print("searching AD_theta_err: ", torch.mean(torch.abs(torch.tensor(AD_theta_err[search_park==flag]))), torch.mean(torch.pow(torch.tensor(AD_theta_err[search_park==flag]),2)))
+            print("searching BC_theta_err: ", torch.mean(torch.abs(torch.tensor(BC_theta_err[search_park==flag]))), torch.mean(torch.pow(torch.tensor(BC_theta_err[search_park==flag]),2)))
+            print("\n")
+            
+        flag = True
+        cnt = search_park[search_park==flag].shape[0] 
+        if(cnt):
+            print("parking cnt: ", cnt)
+            print("parking A_x_err: ",      torch.mean(torch.abs(torch.tensor(A_x_err[search_park==flag]))),      torch.mean(torch.pow(torch.tensor(A_x_err[search_park==flag]),2)))
+            print("parking A_y_err: ",      torch.mean(torch.abs(torch.tensor(A_y_err[search_park==flag]))),      torch.mean(torch.pow(torch.tensor(A_y_err[search_park==flag]),2)))
+            print("parking B_x_err: ",      torch.mean(torch.abs(torch.tensor(B_x_err[search_park==flag]))),      torch.mean(torch.pow(torch.tensor(B_x_err[search_park==flag]),2)))
+            print("parking B_y_err: ",      torch.mean(torch.abs(torch.tensor(B_y_err[search_park==flag]))),      torch.mean(torch.pow(torch.tensor(B_y_err[search_park==flag]),2)))
+            print("parking AD_theta_err: ", torch.mean(torch.abs(torch.tensor(AD_theta_err[search_park==flag]))), torch.mean(torch.pow(torch.tensor(AD_theta_err[search_park==flag]),2)))
+            print("parking BC_theta_err: ", torch.mean(torch.abs(torch.tensor(BC_theta_err[search_park==flag]))), torch.mean(torch.pow(torch.tensor(BC_theta_err[search_park==flag]),2)))
+            print("\n")

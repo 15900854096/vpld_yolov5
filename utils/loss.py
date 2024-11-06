@@ -245,8 +245,12 @@ class ComputeLoss:
                 
                 lossxy  = torch.sum(self.MSEnone(Apbox[:,0:2], Atbox[i][:,0:2]) * Aitst) / (na*2) \
                         + torch.sum(self.MSEnone(Bpbox[:,0:2], Btbox[i][:,0:2]) * Bitst) / (nb*2)
+               
+                Apbox_normal = torch.nn.functional.normalize(Apbox[:,2:4], dim=1, eps=1e-12)
+                Bpbox_normal = torch.nn.functional.normalize(Bpbox[:,2:4], dim=1, eps=1e-12)
                 losstheAD =  torch.sum(self.MSEthetaAD(Apbox[:,2:4], Atbox[i][:,2:4]) * Aitst * AweightstheAD) / (na*2) \
-                          +  torch.sum(self.MSEthetaAD(Bpbox[:,2:4], Btbox[i][:,2:4]) * Bitst * BweightstheAD) / (nb*2)
+                            +  torch.sum(self.MSEthetaAD(Bpbox[:,2:4], Btbox[i][:,2:4]) * Bitst * BweightstheAD) / (nb*2)
+                                                    
                 losstheAB = torch.sum(self.MSEnone(Apbox[:,4:6], Atbox[i][:,4:6])) / (na*2) \
                           + torch.sum(self.MSEnone(Bpbox[:,4:6], Btbox[i][:,4:6])) / (nb*2)
                 # losstheAD = torch.sum(self.MSEthetaAD(torch.atan2(Apbox[:,2:3],Apbox[:,3:4]) , torch.atan2(Atbox[i][:,2:3],Atbox[i][:,3:4])) * Aitst[:,0:1] * AweightstheAD) / na  \
@@ -298,7 +302,7 @@ class ComputeLoss:
                 #     Aselect[image_idx.repeat(hyp["NEG_POS_RATE"]), archor_idx.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1
                 #每个图像的每层archor(实际上就一个archor)上必须有_baseline_neg个负样本
                 # pi.shape[:4] batchsize anchor_num outputbuffer_h outputbuffer_w
-                _baseline_neg = 5
+                _baseline_neg = 20
                 _bs = pi.shape[0]
                 _as = pi.shape[1]
                 batch_list = torch.arange(0, _bs).repeat(_baseline_neg*_as)
@@ -326,7 +330,7 @@ class ComputeLoss:
                 #     list2 = random.choices(collist, k = idxlist.shape[0] * hyp["NEG_POS_RATE"])
                 #     Bselect[image_idx.repeat(hyp["NEG_POS_RATE"]), archor_idx.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1
                 #每个图像的每层archor(实际上就一个archor)上必须有_baseline_neg个负样本
-                _baseline_neg = 5
+                _baseline_neg = 20
                 _bs = pi.shape[0]
                 _as = pi.shape[1]
                 batch_list = torch.arange(0, _bs).repeat(_baseline_neg*_as)
