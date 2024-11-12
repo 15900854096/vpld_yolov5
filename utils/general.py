@@ -44,9 +44,9 @@ from utils.downloads import curl_download, gsutil_getsize
 from utils.metrics import box_iou, fitness, bbox_iou_eval #bbox_iou_eval平行四边形求IOU
 
 base_image_size = 640
-default_vlot_depth = 200
-default_hlot_depth = 50 
-default_hlot_min_width = 200
+default_vlot_depth = 200 / base_image_size
+default_hlot_depth = 50 / base_image_size
+default_hlot_min_width = 200 /base_image_size
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[1]  # YOLOv5 root directory
@@ -741,8 +741,8 @@ def xyxy2xywh(x):
 def xylentheta2pts4(lot,imgsz):
     num = lot.shape[0]
     
-    leng = torch.full((num ,1), default_vlot_depth)
-    leng[lot[:,2]*imgsz > default_hlot_min_width,0:1] = default_hlot_depth
+    leng = torch.full((num ,1), default_vlot_depth*imgsz)
+    leng[lot[:,2]*imgsz > default_hlot_min_width*imgsz,0:1] = default_hlot_depth*imgsz
     
     res = torch.zeros((num,8))
     res[:,0:2] = lot[:,0:2] #x1 y1

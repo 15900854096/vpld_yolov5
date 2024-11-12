@@ -248,9 +248,11 @@ class ComputeLoss:
                
                 Apbox_normal = torch.nn.functional.normalize(Apbox[:,2:4], dim=1, eps=1e-12)
                 Bpbox_normal = torch.nn.functional.normalize(Bpbox[:,2:4], dim=1, eps=1e-12)
-                losstheAD =  torch.sum(self.MSEthetaAD(Apbox[:,2:4], Atbox[i][:,2:4]) * Aitst * AweightstheAD) / (na*2) \
-                            +  torch.sum(self.MSEthetaAD(Bpbox[:,2:4], Btbox[i][:,2:4]) * Bitst * BweightstheAD) / (nb*2)
-                                                    
+                losstheAD =  torch.sum(self.MSEthetaAD(Apbox_normal, Atbox[i][:,2:4]) * Aitst * AweightstheAD) / (na*2) \
+                            +  torch.sum(self.MSEthetaAD(Bpbox_normal, Btbox[i][:,2:4]) * Bitst * BweightstheAD) / (nb*2)
+                # losstheAD =  torch.sum(self.MSEthetaAD(Apbox_normal, Atbox[i][:,2:4]) *  torch.pow((1.5 - torch.abs(Atbox[i][:,2:4])), 2) * Aitst * AweightstheAD) / (na*2) \
+                #             +  torch.sum(self.MSEthetaAD(Bpbox_normal, Btbox[i][:,2:4]) *  torch.pow((1.5 - torch.abs(Btbox[i][:,2:4])), 2) * Bitst * BweightstheAD) / (nb*2)
+
                 losstheAB = torch.sum(self.MSEnone(Apbox[:,4:6], Atbox[i][:,4:6])) / (na*2) \
                           + torch.sum(self.MSEnone(Bpbox[:,4:6], Btbox[i][:,4:6])) / (nb*2)
                 # losstheAD = torch.sum(self.MSEthetaAD(torch.atan2(Apbox[:,2:3],Apbox[:,3:4]) , torch.atan2(Atbox[i][:,2:3],Atbox[i][:,3:4])) * Aitst[:,0:1] * AweightstheAD) / na  \
@@ -378,10 +380,10 @@ class ComputeLoss:
         #targets: img_id  cls  x1  y1  x2  y2  x3  y3 x4 y4
         temp_targets = copy.deepcopy(targets)
         if(temp_targets.shape[0]>0):
-            lengGt = torch.full((temp_targets.shape[0] ,1), default_vlot_depth/base_image_size, device=self.device)
+            lengGt = torch.full((temp_targets.shape[0] ,1), default_vlot_depth, device=self.device)
             widthGt = torch.sqrt((temp_targets[:,4] - temp_targets[:,2])**2+(temp_targets[:,5] - temp_targets[:,3])**2)
-            hlotGT_idx = torch.tensor(range(temp_targets.shape[0]), device=self.device)[widthGt > (1.0*default_hlot_min_width/base_image_size)]
-            lengGt[hlotGT_idx,0:1] = default_hlot_depth/base_image_size
+            hlotGT_idx = torch.tensor(range(temp_targets.shape[0]), device=self.device)[widthGt > (1.0*default_hlot_min_width)]
+            lengGt[hlotGT_idx,0:1] = default_hlot_depth
             thetaBC = torch.atan2(temp_targets[:,7:8] - temp_targets[:,5:6],temp_targets[:,6:7] - temp_targets[:,4:5])
             thetaAD = torch.atan2(temp_targets[:,9:10] - temp_targets[:,3:4],temp_targets[:,8:9] - temp_targets[:,2:3])
             

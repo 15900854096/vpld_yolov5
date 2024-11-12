@@ -276,10 +276,9 @@ def run(
             # x y len c1 s1 ADc ADs BCc BCs conf cls base_ori(x1 y1) BatchNorm1(other)
             
             #translation
-            lengPre = torch.full((predn.shape[0] ,1), default_vlot_depth, device=device)
-            lengPre[predn[:,2]*ori_shape[0] > default_hlot_min_width,0:1] = default_hlot_depth
-            #hlotPre_idx = torch.tensor(range(predn.shape[0]), device=device)[predn[0,2]*ori_shape[0] > default_hlot_min_width]
-            #lengPre[hlotPre_idx,0:1]=default_hlot_depth
+            lengPre = torch.full((predn.shape[0] ,1), default_vlot_depth*ori_shape[0], device=device)
+            lengPre[predn[:,2]*ori_shape[0] > default_hlot_min_width*ori_shape[0],0:1] = default_hlot_depth*ori_shape[0]
+            
 
             # 0 1  2   3  4  5  6    7   8    9   10
             # x y len c1 s1 ADc ADs BCc BCs conf cls base_ori(x1 y1) BatchNorm1(other)
@@ -308,10 +307,10 @@ def run(
                 #          0    1  2  3  4  5  6  7  8
                 #lebels: label x1 y1 x2 y2 x3 y3 x4 y4 base_ori&depth_bad
                 #labels中库位深度(pt2->pt3)是假值且不统一，需要设计成固定值，方便和pred联合计算iou
-                lengGt = torch.full((labels.shape[0] ,1), default_vlot_depth, device=device)
+                lengGt = torch.full((labels.shape[0] ,1), default_vlot_depth*ori_shape[0], device=device)
                 widthGt = torch.sqrt((labels[:,3] - labels[:,1])**2+(labels[:,4] - labels[:,2])**2)
-                hlotGT_idx = torch.tensor(range(labels.shape[0]), device=device)[widthGt > default_hlot_min_width]
-                lengGt[hlotGT_idx,0:1] = default_hlot_depth
+                hlotGT_idx = torch.tensor(range(labels.shape[0]), device=device)[widthGt > default_hlot_min_width*ori_shape[0]]
+                lengGt[hlotGT_idx,0:1] = default_hlot_depth*ori_shape[0]
                 thetaBC = torch.atan2(labels[:,6:7] - labels[:,4:5],labels[:,5:6] - labels[:,3:4])
                 thetaAD = torch.atan2(labels[:,8:9] - labels[:,2:3],labels[:,7:8] - labels[:,1:2])
                 
