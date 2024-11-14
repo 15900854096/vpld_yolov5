@@ -486,6 +486,9 @@ class Cal_R_Matrix:
                     self.cnt+=1
 
     def get_result(self):
+        if(len(self.A_x_err)==0):
+            return
+            
         A_x_err = np.array(torch.stack(self.A_x_err).cpu())
         A_y_err = np.array(torch.stack(self.A_y_err).cpu())
         B_x_err = np.array(torch.stack(self.B_x_err).cpu())
