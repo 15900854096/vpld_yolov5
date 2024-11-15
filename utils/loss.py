@@ -18,7 +18,7 @@ from shapely.geometry import Polygon, MultiPoint
 from time import perf_counter_ns
 from utils.metrics import bbox_iou, bbox_iou_cat_in_lot
 from utils.torch_utils import de_parallel
-from utils.general import default_vlot_depth, default_hlot_depth, default_hlot_min_width, base_image_size
+from utils.general import default_vlot_depth, default_hlot_depth, default_hlot_min_width, base_image_size, PI
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # YOLOv5 root directory
@@ -150,7 +150,8 @@ class ComputeLoss:
         self.polycar = Polygon(self.polycar).convex_hull
         self.consum_time=[0,0,0,0]
 
-    def __call__(self, p, targets, i_iter=0, need_cal=False):  # predictions, targets
+    def __call__(self, p, targets, epoch=0, i_iter=0):  # predictions, targets
+        need_cal = epoch<=1
         if(i_iter==0 and need_cal):
             self.consum_time=[0,0,0,0]
         if (need_cal):
@@ -258,13 +259,23 @@ class ComputeLoss:
                     Bweight = torch.pow((1.5 - torch.abs(Btbox[i][:,2:4])), 2)
                     losstheAD =  torch.sum(self.MSEthetaAD(Apbox_normal, Atbox[i][:,2:4]) * Aweight * Aitst * AweightstheAD) / (na*2) \
                               +  torch.sum(self.MSEthetaAD(Bpbox_normal, Btbox[i][:,2:4]) * Bweight * Bitst * BweightstheAD) / (nb*2)
-                elif 0: #直接使用余弦相似度 有一个问题就是即使余弦相似度到了0.9999，弧度0.014142253477512098，弧度差距还是蛮大的，不符合库位检测精度要求
-                    Acos_sim = torch.cosine_similarity(Apbox_normal, Atbox[i][:,2:4], eps=1e-6, dim=1)
-                    Bcos_sim = torch.cosine_similarity(Bpbox_normal, Btbox[i][:,2:4], eps=1e-6, dim=1)
-                    Acos_sim_gt = torch.ones(Apbox_normal.shape[0], device=self.device)
-                    Bcos_sim_gt = torch.ones(Bpbox_normal.shape[0], device=self.device)
-                    losstheAD =  torch.sum(torch.nn.functional.smooth_l1_loss(Acos_sim, Acos_sim_gt, reduction='none') * Aitst[:,0] * AweightstheAD[:,0]) / (na) \
-                              +  torch.sum(torch.nn.functional.smooth_l1_loss(Bcos_sim, Bcos_sim_gt, reduction='none') * Bitst[:,0] * BweightstheAD[:,0]) / (nb)
+                elif 1: 
+                    if 0: #直接使用余弦相似度 有一个问题就是即使余弦相似度到了0.9999，弧度0.014142253477512098，弧度差距还是蛮大的，不符合库位检测精度要求
+                        Acos_sim = torch.cosine_similarity(Apbox_normal, Atbox[i][:,2:4], eps=1e-6, dim=1)
+                        Bcos_sim = torch.cosine_similarity(Bpbox_normal, Btbox[i][:,2:4], eps=1e-6, dim=1)
+                        Acos_sim_gt = torch.ones(Apbox_normal.shape[0], device=self.device)
+                        Bcos_sim_gt = torch.ones(Bpbox_normal.shape[0], device=self.device)
+                        losstheAD =  torch.sum(torch.nn.functional.smooth_l1_loss(Acos_sim, Acos_sim_gt, reduction='none') * Aitst[:,0] * AweightstheAD[:,0]) / (na) \
+                                +  torch.sum(torch.nn.functional.smooth_l1_loss(Bcos_sim, Bcos_sim_gt, reduction='none') * Bitst[:,0] * BweightstheAD[:,0]) / (nb)
+                    else: #防止余弦相似度在0附近导数为0的情况，这里直接用角度去计算loss
+                        inf_ = 1e-6
+                        Acos_sim = torch.acos(torch.clip(torch.cosine_similarity(Apbox_normal, Atbox[i][:,2:4], eps=1e-6, dim=1), min=-1+inf_, max=1-inf_))
+                        Bcos_sim = torch.acos(torch.clip(torch.cosine_similarity(Bpbox_normal, Btbox[i][:,2:4], eps=1e-6, dim=1), min=-1+inf_, max=1-inf_))
+                        Acos_sim_gt = torch.zeros(Apbox_normal.shape[0], device=self.device)
+                        Bcos_sim_gt = torch.zeros(Bpbox_normal.shape[0], device=self.device)
+                        losstheAD =  torch.sum(torch.nn.functional.smooth_l1_loss(Acos_sim, Acos_sim_gt, reduction='none') * Aitst[:,0] * AweightstheAD[:,0]) / (na) \
+                                +  torch.sum(torch.nn.functional.smooth_l1_loss(Bcos_sim, Bcos_sim_gt, reduction='none') * Bitst[:,0] * BweightstheAD[:,0]) / (nb)
+                    losstheAD *= 2.4 #结合后面的*2，这里等同于乘以4.8，约等于endpose到入口线的距离，通过这种方式平衡欧式距离误差和角度误差的权重
                 else:
                     losstheAD =  torch.sum(self.MSEthetaAD(Apbox_normal, Atbox[i][:,2:4]) * Aitst * AweightstheAD) / (na*2) \
                               +  torch.sum(self.MSEthetaAD(Bpbox_normal, Btbox[i][:,2:4]) * Bitst * BweightstheAD) / (nb*2)
