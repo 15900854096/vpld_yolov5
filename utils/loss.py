@@ -276,7 +276,7 @@ class ComputeLoss:
                         losstheAD =  torch.sum(torch.nn.functional.smooth_l1_loss(Acos_sim, Acos_sim_gt, reduction='none') * Aitst[:,0] * AweightstheAD[:,0]) / (na) \
                                 +  torch.sum(torch.nn.functional.smooth_l1_loss(Bcos_sim, Bcos_sim_gt, reduction='none') * Bitst[:,0] * BweightstheAD[:,0]) / (nb)
                     losstheAD *= 2.4 #结合后面的*2，这里等同于乘以4.8，约等于endpose到入口线的距离，通过这种方式平衡欧式距离误差和角度误差的权重
-                else:
+                else: #cos 和 sin 直接计算L2loss
                     losstheAD =  torch.sum(self.MSEthetaAD(Apbox_normal, Atbox[i][:,2:4]) * Aitst * AweightstheAD) / (na*2) \
                               +  torch.sum(self.MSEthetaAD(Bpbox_normal, Btbox[i][:,2:4]) * Bitst * BweightstheAD) / (nb*2)
                                         
