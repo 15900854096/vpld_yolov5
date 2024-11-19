@@ -923,7 +923,7 @@ def non_max_suppression(
     if mps:  # MPS not fully supported yet, convert tensors to CPU before NMS
         prediction = prediction.cpu()
     bs = prediction.shape[0]  # batch size
-    nc = prediction.shape[2] - nm - 16 - 10 # number of classes
+    nc = prediction.shape[2] - nm - 16 - 12 # number of classes
 
     Axc = prediction[..., 7] > conf_thres  # candidates
     Bxc = prediction[..., 15] > conf_thres  # candidates
@@ -941,7 +941,10 @@ def non_max_suppression(
 
     t = time.time()
     mi = 16 + nc  # mask start index
-    output = [torch.zeros((0, 11 + nm), device=prediction.device)] * bs # 11 = x y len c1 s1 ADc ADs BCc BCs conf cls  base_640
+    output={}
+    output["vpld"] = [torch.zeros((0, 11 + nm), device=prediction.device)] * bs # 11 = x y len c1 s1 ADc ADs BCc BCs conf cls  base_640
+    output["cpoint"] = [torch.zeros((0, 6), device=prediction.device)] * bs # 11 = x y len c1 s1 ADc ADs BCc BCs conf cls  base_640
+    output["dpoint"] = [torch.zeros((0, 6), device=prediction.device)] * bs # 11 = x y len c1 s1 ADc ADs BCc BCs conf cls  base_640
     for xi, x in enumerate(prediction):  # image index, image inference
         # Apply constraints
         # x[((x[..., 2:4] < min_wh) | (x[..., 2:4] > max_wh)).any(1), 4] = 0  # width-height
@@ -952,7 +955,13 @@ def non_max_suppression(
         Bx = x[Bxc[xi]][:,8:18]  #Bx By Bc1 Bs1 Bc2 Bs2 Blen Bobj cls1 cls2  
         Cx = x[Cxc[xi]][:,18:24] #Cx Cy Cc Cs Clen Cobj
         Dx = x[Dxc[xi]][:,24:30] #Dx Dy Dc Ds Dlen Dobj
-      
+
+        # print("Ax:  ",Ax)
+        # print("Bx:  ",Bx)
+        # print("Cx:  ",Cx)
+        # print("Dx:  ",Dx)
+        # sys.exit()
+
         # 0  1  2    3   4   5    6    7  8  9  10  11  12  13  14   15   16   17
         # Ax Ay Ac1 As1 Ac2 As2 Alen Aobj Bx By Bc1 Bs1 Bc2 Bs2 Blen Bobj cls1 cls2
 
@@ -993,6 +1002,9 @@ def non_max_suppression(
 
         # print("Ax:  ",Ax)
         # print("Bx:  ",Bx)
+        # print("Cx:  ",Cx)
+        # print("Dx:  ",Dx)
+        # sys.exit()
         for Apidx, Ap in enumerate(Ax):
             for Bpidx, Bp in enumerate(Bx):
                 cls = list(Bp[-2:])
@@ -1097,7 +1109,9 @@ def non_max_suppression(
             if redundant:
                 i = i[iou.sum(1) > 1]  # require redundancy
 
-        output[xi] = x[i]
+        output["vpld"][xi] = x[i]
+        output["cpoint"][xi] = torch.tensor(Cx).to(prediction.device)
+        output["dpoint"][xi] = torch.tensor(Dx).to(prediction.device)
         if mps:
             output[xi] = output[xi].to(device)
         if (time.time() - t) > time_limit:

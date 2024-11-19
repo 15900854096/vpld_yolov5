@@ -152,7 +152,9 @@ def run(
         # pred = utils.general.apply_classifier(pred, classifier_model, im, im0s)
 
         # Process predictions
-        for i, det in enumerate(pred):  # per image
+        for i, det in enumerate(pred["vpld"]):  # per image
+            cpts = pred["cpoint"][i]
+            dpts = pred["dpoint"][i]
             # 0 1  2   3  4  5   6   7   8   9   10
             # x y len c1 s1 ADc ADs BCc BCs conf cls x&y:base_640  others:normal 1
             seen += 1
@@ -169,9 +171,20 @@ def run(
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
             imc = im0.copy() if save_crop else im0  # for save_crop
             #annotator = Annotator(im0, line_width=line_thickness, example=str(names))
-            if len(det):
+            if len(cpts):
+                cpts[:,:2] = scale_boxes(im.shape[2:], cpts[:, :2], im0.shape).round()
+                for cx,cy,cc,cs,cleng,cobj in reversed(cpts):
+                    h,w,c = im0.shape
+                    cleng *=w
+                    cpoint1 = (round(float(cx)) , round(float(cy)))
+                    cpoint2 = (round(float(cx+cleng*cc)) , round(float(cy+cleng*cs)))
+                    cv2.circle(im0, cpoint1, 1, (0,0,255), 4)
+                    cv2.arrowedLine(im0, cpoint1, cpoint2, (255,0,0), 1, 4)
+
+            if 0:#len(det):
                 # Rescale boxes from img_size to im0 size
                 det[:, :2] = scale_boxes(im.shape[2:], det[:, :2], im0.shape).round() #base_640 to base_600
+                
 
                 # Print results
                 for c in det[:, 10].unique():
@@ -223,6 +236,7 @@ def run(
             if save_img:
                 if dataset.mode == 'image':
                     cv2.imwrite(save_path, im0)
+                    #sys.exit()
                 else:  # 'video' or 'stream'
                     if vid_path[i] != save_path:  # new video
                         vid_path[i] = save_path

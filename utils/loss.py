@@ -163,6 +163,8 @@ class ComputeLoss:
         if (need_cal):
             start = perf_counter_ns()
         tcls, Atbox, Aindices, Btbox, Bindices, Ctbox, Cindices, Dtbox, Dindices, anchors = self.build_targets(p, targets)
+        # print("Ctbox: ",Ctbox)
+        # print("Cindices: ",Cindices)
         if (need_cal):
             end = perf_counter_ns()
             self.consum_time[0] += end-start
@@ -415,8 +417,13 @@ class ComputeLoss:
         
             Aobji = torch.sum(self.MSEobj(pi[..., 7].sigmoid(),  Atobj) * Aselect) / torch.sum(Aselect)
             Bobji = torch.sum(self.MSEobj(pi[..., 15].sigmoid(), Btobj) * Bselect) / torch.sum(Bselect)
-            Cobji = torch.sum(self.MSEobj(pi[..., 23].sigmoid(), Ctobj) * Cselect) / torch.sum(Cselect)
-            Dobji = torch.sum(self.MSEobj(pi[..., 29].sigmoid(), Dtobj) * Dselect) / torch.sum(Dselect)
+            Cobji = self.MSEmean(pi[..., 23].sigmoid(), Ctobj)
+            Dobji = self.MSEmean(pi[..., 29].sigmoid(), Dtobj) 
+            # print(Ctobj)
+            # print(torch.sum(Ctobj))
+            # print(torch.sum(Cselect))
+            # print(Cb, Ca, Cgj, Cgi)
+            # sys.exit()
             obji = Aobji+Bobji+Cobji+Dobji
             if (need_cal):
                 end = perf_counter_ns()
@@ -474,6 +481,7 @@ class ComputeLoss:
         #                        A       B       C     D
         #           0      1   2   3   4   5   6   7  8  9
         #targets: img_id  cls  x1  y1  x2  y2  x3  y3 x4 y4
+        #print("targets: ", targets)
         theta_AD = torch.atan2(targets[:,9:10] - targets[:,3:4],targets[:,8:9] - targets[:,2:3])
         theta_BC = torch.atan2(targets[:,7:8]  - targets[:,5:6],targets[:,6:7] - targets[:,4:5])
         theta_AB = torch.atan2(targets[:,5:6]  - targets[:,3:4],targets[:,4:5] - targets[:,2:3])
@@ -687,6 +695,10 @@ class ComputeLoss:
         # print("Aindices: ",Aindices)
         # print("Btbox: ",Btbox)
         # print("Bindices: ",Bindices)
+        # print("Ctbox: ",Ctbox)
+        # print("Cindices: ",Cindices)
+        # print("Dtbox: ",Dtbox)
+        # print("Dindices: ",Dindices)
         # print("anch: ",anch)
         # sys.exit()
         return tcls, Atbox, Aindices, Btbox, Bindices, Ctbox, Cindices, Dtbox, Dindices, anch

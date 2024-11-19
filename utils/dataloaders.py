@@ -690,6 +690,8 @@ class LoadImagesAndLabels(Dataset):
             shapes = (h0, w0), ((h / h0, w / w0), pad)  # for COCO mAP rescaling
 
             labels = self.labels[index].copy()
+            # print(self.im_files[index])
+            # print(self.labels[index])
             #if labels.size:  # normalized xywh to pixel xyxy format
             #    labels[:, 1:] = xywhn2xyxy(labels[:, 1:], ratio[0] * w, ratio[1] * h, padw=pad[0], padh=pad[1])
 
