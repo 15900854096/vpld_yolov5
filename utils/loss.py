@@ -162,7 +162,7 @@ class ComputeLoss:
         #tcls, tbox, indices, anchors = self.build_targets(p, targets)  # targets
         if (need_cal):
             start = perf_counter_ns()
-        tcls, Atbox, Aindices, Btbox, Bindices, anchors = self.build_targets(p, targets)
+        tcls, Atbox, Aindices, Btbox, Bindices, Ctbox, Cindices, Dtbox, Dindices, anchors = self.build_targets(p, targets)
         if (need_cal):
             end = perf_counter_ns()
             self.consum_time[0] += end-start
@@ -173,28 +173,41 @@ class ComputeLoss:
             collist = range(pi.shape[3]-1)
             Ab, Aa, Agj, Agi = Aindices[i]  # image, anchor, gridy, gridx
             Bb, Ba, Bgj, Bgi = Bindices[i]  # image, anchor, gridy, gridx
+            Cb, Ca, Cgj, Cgi = Cindices[i]  # image, anchor, gridy, gridx
+            Db, Da, Dgj, Dgi = Dindices[i]  # image, anchor, gridy, gridx
 
             Atobj = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)  # target obj
             Btobj = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)  # target obj
+            Ctobj = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)  # target obj
+            Dtobj = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)  # target obj
 
             #Atobj = torch.full_like(Atobj, self.cn, device=self.device)
             #Btobj = torch.full_like(Btobj, self.cn, device=self.device)
             
-            na = Ab.shape[0]
-            nb = Bb.shape[0]
-            n = na + nb  # number of targets
+            nA = Ab.shape[0]
+            nB = Bb.shape[0]
+            nC = Cb.shape[0]
+            nD = Db.shape[0]
+            assert( (Ab.shape[0]==Bb.shape[0]) and (Ab.shape[0]==Cb.shape[0]) and (Ab.shape[0]==Db.shape[0]) )
+            n = nA + nB  # number of targets
             if (need_cal):
                 start = perf_counter_ns()
             if n:
-                #                                    0  1  2   3    4   5   6    7    8  9  10  11   12  13  14   15   16   17
-                #target-subset of predictions #pred: Ax Ay Ac1 As1 Ac2 As2 Alen Aobj  Bx By Bc1 Bs1  Bc2 Bs2 Blen Bobj cls1 cls2
-                Apxy, Apot, Aobj, _, _    = pi[Ab, Aa, Agj, Agi].split((2, 5, 1, 8, self.nc), 1)  
-                _, Bpxy, Bpot, Bobj, pcls = pi[Bb, Ba, Bgj, Bgi].split((8, 2, 5, 1, self.nc), 1) 
-                
+                #                                    0  1  2   3    4   5   6    7    8  9  10  11   12  13  14   15   16   17   18 19 20 21  22   23   24 25 26 27  28   29   
+                #target-subset of predictions #pred: Ax Ay Ac1 As1 Ac2 As2 Alen Aobj  Bx By Bc1 Bs1  Bc2 Bs2 Blen Bobj cls1 cls2 Cx Cy Cc Cs Clen Cobj  Dx Dy Dc Ds Dlen Dobj
+                Apxy, Apot, Aobj, _, _, _ = pi[Ab, Aa, Agj, Agi].split((2, 5, 1, 8, self.nc, 12), 1)  
+                _, Bpxy, Bpot, Bobj, pcls, _ = pi[Bb, Ba, Bgj, Bgi].split((8, 2, 5, 1, self.nc, 12), 1) 
+                _, Cpxy, Cpot, Cobj, _ = pi[Cb, Ca, Cgj, Cgi].split((16 + self.nc, 2, 3, 1, 6), 1) 
+                _, Dpxy, Dpot, Dobj = pi[Db, Da, Dgj, Dgi].split((16 + self.nc + 6, 2, 3, 1), 1) 
+                    
                 Aitst = Atbox[i][:,-1:]
                 Atbox[i] = Atbox[i][:,0:-1]
                 Bitst = Btbox[i][:,-1:]
                 Btbox[i] = Btbox[i][:,0:-1]
+                Citst = Ctbox[i][:,-1:]
+                Ctbox[i] = Ctbox[i][:,0:-1]
+                Ditst = Dtbox[i][:,-1:]
+                Dtbox[i] = Dtbox[i][:,0:-1]
                 
                 if (hyp["ALL_PARKING_LOT_SAME_WEIGHT"]):
                     #顺序不能倒过来，必须先设置true,再设置false
@@ -202,6 +215,10 @@ class ComputeLoss:
                     Aitst[Aitst==False] = 1
                     Bitst[Bitst==True] = 5
                     Bitst[Bitst==False] = 1
+                    Citst[Citst==True] = 5
+                    Citst[Citst==False] = 1
+                    Ditst[Ditst==True] = 5
+                    Ditst[Ditst==False] = 1
                 else:
                     Aitst[Aitst>0.25] = 1
                     Aitst[Aitst>0] *= 5
@@ -209,10 +226,17 @@ class ComputeLoss:
                     Bitst[Bitst>0.25] = 1
                     Bitst[Bitst>0] *= 5
                     Bitst += 1
+                    Citst[Citst>0.25] = 1
+                    Citst[Citst>0] *= 5
+                    Citst += 1
+                    Ditst[Ditst>0.25] = 1
+                    Ditst[Ditst>0] *= 5
+                    Ditst += 1
                 
                 Aitst=torch.concat((Aitst,Aitst),axis=1)
                 Bitst=torch.concat((Bitst,Bitst),axis=1)
-                
+                Citst=torch.concat((Citst,Citst),axis=1)
+                Ditst=torch.concat((Ditst,Ditst),axis=1)
                 
                 # Regression
                 if hyp["USE_THREE_POSITIVE_SAMPLE"]:
@@ -221,76 +245,87 @@ class ComputeLoss:
                 else:
                     Apxy = Apxy.sigmoid()
                     Bpxy = Bpxy.sigmoid()
+                    Cpxy = Cpxy.sigmoid()
+                    Dpxy = Dpxy.sigmoid()
                 
                 Apot = torch.cat( (Apot[:,0:4].tanh() , Apot[:,4:5].sigmoid() ) , dim=1 )
                 Bpot = torch.cat( (Bpot[:,0:4].tanh() , Bpot[:,4:5].sigmoid() ) , dim=1 )
-                
+                Cpot = torch.cat( (Cpot[:,0:2].tanh() , Cpot[:,2:3].sigmoid() ) , dim=1 )
+                Dpot = torch.cat( (Dpot[:,0:2].tanh() , Dpot[:,2:3].sigmoid() ) , dim=1 )
+                    
                 Apbox = torch.cat((Apxy, Apot), 1)
                 Bpbox = torch.cat((Bpxy, Bpot), 1) 
+                Cpbox = torch.cat((Cpxy, Cpot), 1)
+                Dpbox = torch.cat((Dpxy, Dpot), 1) 
                 
                 # hlot not care about direction theta, vlot&islot care about direction theta  0.375=4.8/12.8
-                AweightstheAD = torch.zeros((na,1), dtype=pi.dtype, device=self.device)+1.5
+                AweightstheAD = torch.zeros((nA,1), dtype=pi.dtype, device=self.device)+1.5
                 AweightstheAD[Atbox[i][:,6:7]>0.375] = 0.25
                 AweightstheAD=torch.concat((AweightstheAD,AweightstheAD),axis=1)
                 
-                BweightstheAD = torch.zeros((nb,1), dtype=pi.dtype, device=self.device)+1.5
+                BweightstheAD = torch.zeros((nB,1), dtype=pi.dtype, device=self.device)+1.5
                 BweightstheAD[Btbox[i][:,6:7]>0.375] = 0.25
                 BweightstheAD=torch.concat((BweightstheAD,BweightstheAD),axis=1)
                 
-                #if(torch.sum(Atbox[i][:,6:7]>0.375)>0):
-                #    print("na,nb,n: ",na,nb,n)
-                #    print("AweightstheAD: ",AweightstheAD)
-                #    print("BweightstheAD: ",BweightstheAD)
-                #    sys.exit()
                 
+                lossxyABCD  = torch.sum(self.MSEnone(Apbox[:,0:2], Atbox[i][:,0:2]) * Aitst) / (nA*2) \
+                            + torch.sum(self.MSEnone(Bpbox[:,0:2], Btbox[i][:,0:2]) * Bitst) / (nB*2) \
+                            + torch.sum(self.MSEnone(Cpbox[:,0:2], Ctbox[i][:,0:2]) * Citst) / (nC*2) \
+                            + torch.sum(self.MSEnone(Dpbox[:,0:2], Dtbox[i][:,0:2]) * Ditst) / (nD*2) 
                 
-                lossxy  = torch.sum(self.MSEnone(Apbox[:,0:2], Atbox[i][:,0:2]) * Aitst) / (na*2) \
-                        + torch.sum(self.MSEnone(Bpbox[:,0:2], Btbox[i][:,0:2]) * Bitst) / (nb*2)
-                
-                if 0: #cos 和 sin 是否先归一化
-                    Apbox_normal = torch.nn.functional.normalize(Apbox[:,2:4], dim=1, eps=1e-12)
-                    Bpbox_normal = torch.nn.functional.normalize(Bpbox[:,2:4], dim=1, eps=1e-12)
-                else:
-                    Apbox_normal = Apbox[:,2:4] 
-                    Bpbox_normal = Bpbox[:,2:4] 
+                # if 0: #cos 和 sin 是否先归一化
+                #     Apbox_normal = torch.nn.functional.normalize(Apbox[:,2:4], dim=1, eps=1e-12)
+                #     Bpbox_normal = torch.nn.functional.normalize(Bpbox[:,2:4], dim=1, eps=1e-12)
+                # else:
+                #     Apbox_normal = Apbox[:,2:4] 
+                #     Bpbox_normal = Bpbox[:,2:4] 
 
-                if 0:  #cos 和 sin 是否带权重后计算L2loss 
-                    Aweight = torch.pow((1.5 - torch.abs(Atbox[i][:,2:4])), 2)
-                    Bweight = torch.pow((1.5 - torch.abs(Btbox[i][:,2:4])), 2)
-                    losstheAD =  torch.sum(self.MSEthetaAD(Apbox_normal, Atbox[i][:,2:4]) * Aweight * Aitst * AweightstheAD) / (na*2) \
-                              +  torch.sum(self.MSEthetaAD(Bpbox_normal, Btbox[i][:,2:4]) * Bweight * Bitst * BweightstheAD) / (nb*2)
-                elif 1: 
-                    if 0: #直接使用余弦相似度 有一个问题就是即使余弦相似度到了0.9999，弧度0.014142253477512098，弧度差距还是蛮大的，不符合库位检测精度要求
-                        Acos_sim = torch.cosine_similarity(Apbox_normal, Atbox[i][:,2:4], eps=1e-6, dim=1)
-                        Bcos_sim = torch.cosine_similarity(Bpbox_normal, Btbox[i][:,2:4], eps=1e-6, dim=1)
-                        Acos_sim_gt = torch.ones(Apbox_normal.shape[0], device=self.device)
-                        Bcos_sim_gt = torch.ones(Bpbox_normal.shape[0], device=self.device)
-                        losstheAD =  torch.sum(torch.nn.functional.smooth_l1_loss(Acos_sim, Acos_sim_gt, reduction='none') * Aitst[:,0] * AweightstheAD[:,0]) / (na) \
-                                +  torch.sum(torch.nn.functional.smooth_l1_loss(Bcos_sim, Bcos_sim_gt, reduction='none') * Bitst[:,0] * BweightstheAD[:,0]) / (nb)
-                    else: #防止余弦相似度在0附近导数为0的情况，这里直接用角度去计算loss
-                        inf_ = 1e-6
-                        Acos_sim = torch.acos(torch.clip(torch.cosine_similarity(Apbox_normal, Atbox[i][:,2:4], eps=1e-6, dim=1), min=-1+inf_, max=1-inf_))
-                        Bcos_sim = torch.acos(torch.clip(torch.cosine_similarity(Bpbox_normal, Btbox[i][:,2:4], eps=1e-6, dim=1), min=-1+inf_, max=1-inf_))
-                        Acos_sim_gt = torch.zeros(Apbox_normal.shape[0], device=self.device)
-                        Bcos_sim_gt = torch.zeros(Bpbox_normal.shape[0], device=self.device)
-                        losstheAD =  torch.sum(torch.nn.functional.smooth_l1_loss(Acos_sim, Acos_sim_gt, reduction='none') * Aitst[:,0] * AweightstheAD[:,0]) / (na) \
-                                +  torch.sum(torch.nn.functional.smooth_l1_loss(Bcos_sim, Bcos_sim_gt, reduction='none') * Bitst[:,0] * BweightstheAD[:,0]) / (nb)
-                    losstheAD *= 2.4 #结合后面的*2，这里等同于乘以4.8，约等于endpose到入口线的距离，通过这种方式平衡欧式距离误差和角度误差的权重
-                else: #cos 和 sin 直接计算L2loss
-                    losstheAD =  torch.sum(self.MSEthetaAD(Apbox_normal, Atbox[i][:,2:4]) * Aitst * AweightstheAD) / (na*2) \
-                              +  torch.sum(self.MSEthetaAD(Bpbox_normal, Btbox[i][:,2:4]) * Bitst * BweightstheAD) / (nb*2)
-                                        
-                losstheAB = torch.sum(self.MSEnone(Apbox[:,4:6], Atbox[i][:,4:6])) / (na*2) \
-                          + torch.sum(self.MSEnone(Bpbox[:,4:6], Btbox[i][:,4:6])) / (nb*2)
-                # losstheAD = torch.sum(self.MSEthetaAD(torch.atan2(Apbox[:,2:3],Apbox[:,3:4]) , torch.atan2(Atbox[i][:,2:3],Atbox[i][:,3:4])) * Aitst[:,0:1] * AweightstheAD) / na  \
-                #           + torch.sum(self.MSEthetaAD(torch.atan2(Bpbox[:,2:3],Bpbox[:,3:4]) , torch.atan2(Btbox[i][:,2:3],Btbox[i][:,3:4])) * Bitst[:,0:1] * BweightstheAD) / nb 
-                # losstheAB = torch.sum(self.MSEthetaAD(torch.atan2(Apbox[:,4:5],Apbox[:,5:6]) , torch.atan2(Atbox[i][:,4:5],Atbox[i][:,5:6]))) / na  \
-                #           + torch.sum(self.MSEthetaAD(torch.atan2(Bpbox[:,4:5],Bpbox[:,5:6]) , torch.atan2(Btbox[i][:,4:5],Btbox[i][:,5:6]))) / nb 
-                          
-                losslen = torch.sum(self.MSEnone(Apbox[:,6:7], Atbox[i][:,6:7])) / (na) \
-                          + torch.sum(+ self.MSEnone(Bpbox[:,6:7], Btbox[i][:,6:7])) / (nb)
+                # if 0:  #cos 和 sin 是否带权重后计算L2loss 
+                #     Aweight = torch.pow((1.5 - torch.abs(Atbox[i][:,2:4])), 2)
+                #     Bweight = torch.pow((1.5 - torch.abs(Btbox[i][:,2:4])), 2)
+                #     losstheAD =  torch.sum(self.MSEnone(Apbox_normal, Atbox[i][:,2:4]) * Aweight * Aitst * AweightstheAD) / (nA*2) \
+                #               +  torch.sum(self.MSEnone(Bpbox_normal, Btbox[i][:,2:4]) * Bweight * Bitst * BweightstheAD) / (nB*2)
+                # elif 1: 
+                #     if 0: #直接使用余弦相似度 有一个问题就是即使余弦相似度到了0.9999，弧度0.014142253477512098，弧度差距还是蛮大的，不符合库位检测精度要求
+                #         Acos_sim = torch.cosine_similarity(Apbox_normal, Atbox[i][:,2:4], eps=1e-6, dim=1)
+                #         Bcos_sim = torch.cosine_similarity(Bpbox_normal, Btbox[i][:,2:4], eps=1e-6, dim=1)
+                #         Acos_sim_gt = torch.ones(Apbox_normal.shape[0], device=self.device)
+                #         Bcos_sim_gt = torch.ones(Bpbox_normal.shape[0], device=self.device)
+                #         losstheAD =  torch.sum(torch.nn.functional.smooth_l1_loss(Acos_sim, Acos_sim_gt, reduction='none') * Aitst[:,0] * AweightstheAD[:,0]) / (nA) \
+                #                 +  torch.sum(torch.nn.functional.smooth_l1_loss(Bcos_sim, Bcos_sim_gt, reduction='none') * Bitst[:,0] * BweightstheAD[:,0]) / (nB)
+                #     else: #防止余弦相似度在0附近导数为0的情况，这里直接用角度去计算loss
+                #         inf_ = 1e-6
+                #         Acos_sim = torch.acos(torch.clip(torch.cosine_similarity(Apbox_normal, Atbox[i][:,2:4], eps=1e-6, dim=1), min=-1+inf_, max=1-inf_))
+                #         Bcos_sim = torch.acos(torch.clip(torch.cosine_similarity(Bpbox_normal, Btbox[i][:,2:4], eps=1e-6, dim=1), min=-1+inf_, max=1-inf_))
+                #         Acos_sim_gt = torch.zeros(Apbox_normal.shape[0], device=self.device)
+                #         Bcos_sim_gt = torch.zeros(Bpbox_normal.shape[0], device=self.device)
+                #         losstheAD =  torch.sum(torch.nn.functional.smooth_l1_loss(Acos_sim, Acos_sim_gt, reduction='none') * Aitst[:,0] * AweightstheAD[:,0]) / (nA) \
+                #                 +  torch.sum(torch.nn.functional.smooth_l1_loss(Bcos_sim, Bcos_sim_gt, reduction='none') * Bitst[:,0] * BweightstheAD[:,0]) / (nB)
+                #     losstheAD *= 2.4 #结合后面的*2，这里等同于乘以4.8，约等于endpose到入口线的距离，通过这种方式平衡欧式距离误差和角度误差的权重
+                # else: #cos 和 sin 直接计算L2loss
+                #     losstheAD =  torch.sum(self.MSEnone(Apbox_normal, Atbox[i][:,2:4]) * Aitst * AweightstheAD) / (nA*2) \
+                #               +  torch.sum(self.MSEnone(Bpbox_normal, Btbox[i][:,2:4]) * Bitst * BweightstheAD) / (nB*2)
+
+                losstheAD = torch.sum(self.MSEnone(Apbox[:,2:4], Atbox[i][:,2:4]) * Aitst * AweightstheAD) / (nA*2) 
+                losstheBC = torch.sum(self.MSEnone(Bpbox[:,2:4], Btbox[i][:,2:4]) * Bitst * BweightstheAD) / (nB*2)
+                    
+                losstheCB = torch.sum(self.MSEnone(Cpbox[:,2:4], Ctbox[i][:,2:4]) * Citst * AweightstheAD) / (nC*2)
+                losstheDA = torch.sum(self.MSEnone(Dpbox[:,2:4], Dtbox[i][:,2:4]) * Ditst * BweightstheAD) / (nD*2)
+                                            
+                losstheAB = torch.sum(self.MSEnone(Apbox[:,4:6], Atbox[i][:,4:6])) / (nA*2) 
+                losstheBA = torch.sum(self.MSEnone(Bpbox[:,4:6], Btbox[i][:,4:6])) / (nB*2)
                 
-                lbox += lossxy * 1 + losslen * 0.75 + losstheAB * 0.75 + losstheAD * 2
+                # losstheAD = torch.sum(self.MSEnone(torch.atan2(Apbox[:,2:3],Apbox[:,3:4]) , torch.atan2(Atbox[i][:,2:3],Atbox[i][:,3:4])) * Aitst[:,0:1] * AweightstheAD) / nA  \
+                #           + torch.sum(self.MSEnone(torch.atan2(Bpbox[:,2:3],Bpbox[:,3:4]) , torch.atan2(Btbox[i][:,2:3],Btbox[i][:,3:4])) * Bitst[:,0:1] * BweightstheAD) / nB 
+                # losstheAB = torch.sum(self.MSEnone(torch.atan2(Apbox[:,4:5],Apbox[:,5:6]) , torch.atan2(Atbox[i][:,4:5],Atbox[i][:,5:6]))) / nA  \
+                #           + torch.sum(self.MSEnone(torch.atan2(Bpbox[:,4:5],Bpbox[:,5:6]) , torch.atan2(Btbox[i][:,4:5],Btbox[i][:,5:6]))) / nB 
+                          
+                losslenAB = torch.sum(self.MSEnone(Apbox[:,6:7], Atbox[i][:,6:7])) / (nA) 
+                losslenBA = torch.sum(self.MSEnone(Bpbox[:,6:7], Btbox[i][:,6:7])) / (nB)
+                losslenCB = torch.sum(self.MSEnone(Cpbox[:,4:5], Ctbox[i][:,4:5])) / (nC)
+                losslenDA = torch.sum(self.MSEnone(Dpbox[:,4:5], Dtbox[i][:,4:5])) / (nD)
+                
+                lbox += lossxyABCD * 1 + (losslenAB +losslenBA) * 0.75 + (losstheAB + losstheBA) * 0.75 + (losstheAD + losstheBC + losstheCB + losstheDA) * 1.5 + (losslenCB + losslenDA)*1.5
                     
                 #iou = bbox_iou(pbox, tbox[i], CIoU=True).squeeze()  # iou(prediction, target)
                 #lbox += (1.0 - iou).mean()  # iou loss
@@ -304,11 +339,13 @@ class ComputeLoss:
                 #    iou = (1.0 - self.gr) + self.gr * iou   
                 Atobj[Ab, Aa, Agj, Agi] = 1  # iou ratio
                 Btobj[Bb, Ba, Bgj, Bgi] = 1  # iou ratio
+                Ctobj[Cb, Ca, Cgj, Cgi] = 1  # iou ratio
+                Dtobj[Db, Da, Dgj, Dgi] = 1  # iou ratio
 
                 # Classification
                 if self.nc > 1:  # cls loss (only if multiple classes)
                     t = torch.full_like(pcls, self.cn, device=self.device)  # targets
-                    t[range(nb), tcls[i]] = self.cp
+                    t[range(nB), tcls[i]] = self.cp
                     lcls += self.MSEmean(pcls.sigmoid(), t) #self.BCEcls(pcls, t)  # BCE
                     
             if (need_cal):
@@ -316,72 +353,76 @@ class ComputeLoss:
                 self.consum_time[1] += end-start
                 start = perf_counter_ns()
             
-            if na:
+            #每个图像的每层archor(实际上就一个archor)上必须有_baseline_neg个负样本
+            # pi.shape[:4] batchsize anchor_num outputbuffer_h outputbuffer_w
+            _baseline_neg = 20
+            _bs = pi.shape[0]
+            _as = pi.shape[1]
+
+            if nA:
                 Aselect = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device) #NCHW
-                # for idx, v in enumerate(Ab): #一个库位一个库位的去遍历
-                #     list1 = random.choices(rowlist, k = hyp["NEG_POS_RATE"])
-                #     list2 = random.choices(collist, k = hyp["NEG_POS_RATE"])
-                #     Aselect[v,Aa[idx],list1,list2] = 1  
-                # for i_ in torch.unique(Ab):  #一张图像一张图像的去遍历 
-                #     idxlist = torch.nonzero(Ab==i_)
-                #     image_idx = Ab[idxlist.squeeze()]
-                #     archor_idx = Aa[idxlist.squeeze()]
-                #     list1 = random.choices(rowlist, k = idxlist.shape[0] * hyp["NEG_POS_RATE"])
-                #     list2 = random.choices(collist, k = idxlist.shape[0] * hyp["NEG_POS_RATE"])
-                #     Aselect[image_idx.repeat(hyp["NEG_POS_RATE"]), archor_idx.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1
-                #每个图像的每层archor(实际上就一个archor)上必须有_baseline_neg个负样本
-                # pi.shape[:4] batchsize anchor_num outputbuffer_h outputbuffer_w
-                _baseline_neg = 20
-                _bs = pi.shape[0]
-                _as = pi.shape[1]
                 batch_list = torch.arange(0, _bs).repeat(_baseline_neg*_as)
                 anchor_list = torch.arange(0, _as).repeat(_baseline_neg*_bs)
                 Aselect[batch_list, anchor_list, random.choices(rowlist, k = _baseline_neg*_as*_bs),random.choices(collist, k = _baseline_neg*_as*_bs)] = 1
                 
                 Aselect[Ab, Aa, Agj, Agi] = 1 
-                list1 = random.choices(rowlist, k = na * hyp["NEG_POS_RATE"])
-                list2 = random.choices(collist, k = na * hyp["NEG_POS_RATE"])
+                list1 = random.choices(rowlist, k = nA * hyp["NEG_POS_RATE"])
+                list2 = random.choices(collist, k = nA * hyp["NEG_POS_RATE"])
                 Aselect[Ab.repeat(hyp["NEG_POS_RATE"]), Aa.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1
             else:
                 Aselect = torch.ones(pi.shape[:4], dtype=pi.dtype, device=self.device)
             
-            if nb:
+            if nB:
                 Bselect = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)
-                # for idx, v in enumerate(Bb):
-                #     list1 = random.choices(rowlist, k = hyp["NEG_POS_RATE"])
-                #     list2 = random.choices(collist, k = hyp["NEG_POS_RATE"])
-                #     Bselect[v,Ba[idx],list1,list2] = 1  
-                # for i_ in torch.unique(Bb):
-                #     idxlist = torch.nonzero(Bb==i_) 
-                #     image_idx = Bb[idxlist.squeeze()]
-                #     archor_idx = Ba[idxlist.squeeze()]
-                #     list1 = random.choices(rowlist, k = idxlist.shape[0] * hyp["NEG_POS_RATE"])
-                #     list2 = random.choices(collist, k = idxlist.shape[0] * hyp["NEG_POS_RATE"])
-                #     Bselect[image_idx.repeat(hyp["NEG_POS_RATE"]), archor_idx.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1
-                #每个图像的每层archor(实际上就一个archor)上必须有_baseline_neg个负样本
-                _baseline_neg = 20
-                _bs = pi.shape[0]
-                _as = pi.shape[1]
                 batch_list = torch.arange(0, _bs).repeat(_baseline_neg*_as)
                 anchor_list = torch.arange(0, _as).repeat(_baseline_neg*_bs)
                 Bselect[batch_list, anchor_list, random.choices(rowlist, k = _baseline_neg*_as*_bs), random.choices(collist, k = _baseline_neg*_as*_bs)] = 1
                    
                 Bselect[Bb, Ba, Bgj, Bgi] = 1
-                list1 = random.choices(rowlist, k = nb * hyp["NEG_POS_RATE"])
-                list2 = random.choices(collist, k = nb * hyp["NEG_POS_RATE"])
+                list1 = random.choices(rowlist, k = nB * hyp["NEG_POS_RATE"])
+                list2 = random.choices(collist, k = nB * hyp["NEG_POS_RATE"])
                 Bselect[Bb.repeat(hyp["NEG_POS_RATE"]), Ba.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1 
                     
             else:
                 Bselect = torch.ones(pi.shape[:4], dtype=pi.dtype, device=self.device)
             
-            Aobji = torch.sum(self.MSEobj(pi[..., 7].sigmoid(), Atobj) * Aselect) / torch.sum(Aselect)
-            Bobji = torch.sum(self.MSEobj(pi[..., 15].sigmoid(), Btobj) * Bselect) / torch.sum(Bselect)
+            if nC:
+                Cselect = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)
+                batch_list = torch.arange(0, _bs).repeat(_baseline_neg*_as)
+                anchor_list = torch.arange(0, _as).repeat(_baseline_neg*_bs)
+                Cselect[batch_list, anchor_list, random.choices(rowlist, k = _baseline_neg*_as*_bs), random.choices(collist, k = _baseline_neg*_as*_bs)] = 1
+                   
+                Cselect[Cb, Ca, Cgj, Cgi] = 1
+                list1 = random.choices(rowlist, k = nC * hyp["NEG_POS_RATE"])
+                list2 = random.choices(collist, k = nC * hyp["NEG_POS_RATE"])
+                Cselect[Cb.repeat(hyp["NEG_POS_RATE"]), Ca.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1      
+            else:
+                Cselect = torch.ones(pi.shape[:4], dtype=pi.dtype, device=self.device)
+        
+            if nD:
+                Dselect = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)
+                batch_list = torch.arange(0, _bs).repeat(_baseline_neg*_as)
+                anchor_list = torch.arange(0, _as).repeat(_baseline_neg*_bs)
+                Dselect[batch_list, anchor_list, random.choices(rowlist, k = _baseline_neg*_as*_bs), random.choices(collist, k = _baseline_neg*_as*_bs)] = 1
+                   
+                Dselect[Db, Da, Dgj, Dgi] = 1
+                list1 = random.choices(rowlist, k = nD * hyp["NEG_POS_RATE"])
+                list2 = random.choices(collist, k = nD * hyp["NEG_POS_RATE"])
+                Dselect[Db.repeat(hyp["NEG_POS_RATE"]), Da.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1       
+            else:
+                Dselect = torch.ones(pi.shape[:4], dtype=pi.dtype, device=self.device)
             
+        
+            Aobji = torch.sum(self.MSEobj(pi[..., 7].sigmoid(),  Atobj) * Aselect) / torch.sum(Aselect)
+            Bobji = torch.sum(self.MSEobj(pi[..., 15].sigmoid(), Btobj) * Bselect) / torch.sum(Bselect)
+            Cobji = torch.sum(self.MSEobj(pi[..., 23].sigmoid(), Ctobj) * Cselect) / torch.sum(Cselect)
+            Dobji = torch.sum(self.MSEobj(pi[..., 29].sigmoid(), Dtobj) * Dselect) / torch.sum(Dselect)
+            obji = Aobji+Bobji+Cobji+Dobji
             if (need_cal):
                 end = perf_counter_ns()
                 self.consum_time[2] += end-start
             
-            lobj += (Aobji+Bobji) * self.balance[i]  # obj loss
+            lobj += obji * self.balance[i]  # obj loss
             if self.autobalance:
                 self.balance[i] = self.balance[i] * 0.9999 + 0.0001 / obji.detach().item()
 
@@ -390,7 +431,7 @@ class ComputeLoss:
         lbox *= self.hyp['box']
         lobj *= self.hyp['obj']
         lcls *= self.hyp['cls']
-        bs = Atobj.shape[0]+Btobj.shape[0]  # batch size
+        bs = Atobj.shape[0] + Btobj.shape[0] + Ctobj.shape[0] + Dtobj.shape[0]  # batch size
 
         if (need_cal):
             function_end_t = perf_counter_ns()
@@ -439,8 +480,13 @@ class ComputeLoss:
         theta_BA = torch.atan2(targets[:,3:4]  - targets[:,5:6],targets[:,2:3] - targets[:,4:5])
 
         lengt_AB = torch.sqrt(  torch.pow(targets[:,4:5] - targets[:,2:3],2) +  torch.pow(targets[:,5:6] - targets[:,3:4],2) )
+        
+        theta_CB = torch.atan2(targets[:,5:6] - targets[:,7:8], targets[:,4:5] - targets[:,6:7])
+        theta_DA = torch.atan2(targets[:,3:4] - targets[:,9:10], targets[:,2:3] - targets[:,8:9])
+        lengt_AD = torch.sqrt(  torch.pow(targets[:,8:9] - targets[:,2:3],2) +  torch.pow(targets[:,9:10] - targets[:,3:4],2) )
+        lengt_BC = torch.sqrt(  torch.pow(targets[:,6:7] - targets[:,4:5],2) +  torch.pow(targets[:,7:8]  - targets[:,5:6],2) )
 
-        tmp = torch.cat((torch.zeros_like(targets,device=self.device),torch.zeros(targets.shape[0],7,device=self.device)),dim=1)
+        tmp = torch.cat((torch.zeros_like(targets,device=self.device),torch.zeros(targets.shape[0],7+10,device=self.device)),dim=1)
         tmp[:,0:4] = targets[:,0:4]
         tmp[:,4:5] = torch.cos(theta_AD)
         tmp[:,5:6] = torch.sin(theta_AD)
@@ -456,18 +502,30 @@ class ComputeLoss:
         tmp[:,15:16] = torch.sin(theta_BA)
         
         tmp[:,16] = self.whether_lot_veh_intersects(targets)
+
+        tmp[:,17:19] = targets[:,6:8]
+        tmp[:,19:20] = torch.cos(theta_CB)
+        tmp[:,20:21] = torch.sin(theta_CB)
+        tmp[:,21:22] = lengt_BC
+
+        tmp[:,22:24] = targets[:,8:10] 
+        tmp[:,24:25] = torch.cos(theta_DA)
+        tmp[:,25:26] = torch.sin(theta_DA)
+        tmp[:,26:27] = lengt_AD
+
         targets=tmp
-        #   0      1   2  3   4  5  6    7  8          9  10 11 12  13  14 15     16
-        #img_id occupy Ax Ay c1 s1  leng c2 s2   &     Bx By c1 s1 leng c2 s2 intersects
+        #   0      1   2  3   4  5  6    7  8          9  10 11 12  13  14 15     16     17 18  19   20    21   22 23  24   25    26
+        #img_id occupy Ax Ay c1 s1  leng c2 s2   &     Bx By c1 s1 leng c2 s2 intersects Cx Cy CBc1 CBs1 CBleng Dx Dy DAc1 DAs1 DAleng
 
 
         
         # Build targets for compute_loss(), input targets(image,class,x,y,w,h)
         na, nt = self.na, targets.shape[0]  # number of anchors, targets
-        tcls, Atbox, Btbox, Aindices, Bindices, anch = [], [], [], [], [], []
+        tcls, Atbox, Btbox, Ctbox, Dtbox, Aindices, Bindices, Cindices, Dindices, anch = [], [], [], [], [], [], [], [], [], []
 
-        # normalized to gridspace gain: img_id occupy Ax Ay c1 s1  leng c2 s2 && Bx By c1 s1 leng c2 s2 intersects arid
-        gain = torch.ones(18, device=self.device)
+        # normalized to gridspace gain: 
+        # img_id occupy Ax Ay c1 s1  leng c2 s2 && Bx By c1 s1 leng c2 s2 intersects Cx Cy CBc1 CBs1 CBleng Dx Dy DAc1 DAs1 DAleng arid
+        gain = torch.ones(18+10, device=self.device)
         ai = torch.arange(na, device=self.device).float().view(na, 1).repeat(1, nt)  # same as .repeat_interleave(nt)
         targets = torch.cat((targets.repeat(na, 1, 1), ai[..., None]), 2)  # append anchor indices
 
@@ -488,6 +546,8 @@ class ComputeLoss:
             
             gain[2:4] = torch.tensor(shape)[[3, 2]]  # xyxy gain  # x y len 
             gain[9:11] = torch.tensor(shape)[[3, 2]] 
+            gain[17:19] = torch.tensor(shape)[[3, 2]] 
+            gain[22:24] = torch.tensor(shape)[[3, 2]] 
 
             # Match targets to anchors
             t = targets * gain  # shape(3,n,7)
@@ -581,13 +641,19 @@ class ComputeLoss:
                 # sys.exit()
 
             else:
-                tmp_b, tmp_c, tmp_Ax,tmp_Ay,tmp_Ac1, tmp_As1, tmp_Aleng, tmp_Ac2, tmp_As2, tmp_Bx, tmp_By, tmp_Bc1, tmp_Bs1, tmp_Bleng, tmp_Bc2, tmp_Bs2, itst, a = t.chunk(18, 1)
+                tmp_b, tmp_c, tmp_Ax, tmp_Ay, tmp_Ac1, tmp_As1, tmp_Aleng, tmp_Ac2, tmp_As2, tmp_Bx, tmp_By, tmp_Bc1, tmp_Bs1, tmp_Bleng, tmp_Bc2, tmp_Bs2, itst, \
+                              tmp_Cx, tmp_Cy, tmp_Cc1, tmp_Cs1, tmp_Cleng, tmp_Dx, tmp_Dy, tmp_Dc1, tmp_Ds1, tmp_Dleng, a = t.chunk(18+10, 1)
                 bc = torch.concat((tmp_b,tmp_c), dim=1)
                 Agxy = torch.concat((tmp_Ax,tmp_Ay), dim=1)
                 Agot = torch.concat((tmp_Ac1,tmp_As1, tmp_Ac2, tmp_As2, tmp_Aleng, itst), dim=1)
                 Bgxy = torch.concat((tmp_Bx,tmp_By), dim=1)
                 Bgot = torch.concat((tmp_Bc1,tmp_Bs1, tmp_Bc2, tmp_Bs2, tmp_Bleng, itst), dim=1)
-                
+
+                Cgxy = torch.concat((tmp_Cx,tmp_Cy), dim=1)
+                Cgot = torch.concat((tmp_Cc1,tmp_Cs1, tmp_Cleng, itst), dim=1)
+                Dgxy = torch.concat((tmp_Dx,tmp_Dy), dim=1)
+                Dgot = torch.concat((tmp_Dc1,tmp_Ds1, tmp_Dleng, itst), dim=1)
+
                 a, (b, c) = a.long().view(-1), bc.long().T  # anchors, imageID, class
                 
                 Agij = (Agxy - offsets).long()
@@ -596,12 +662,22 @@ class ComputeLoss:
                 Bgij = (Bgxy - offsets).long()
                 Bgi, Bgj = Bgij.T  # grid indices
 
+                Cgij = (Cgxy - offsets).long()
+                Cgi, Cgj = Cgij.T  # grid indices
+
+                Dgij = (Dgxy - offsets).long()
+                Dgi, Dgj = Dgij.T  # grid indices
+
                 # Append
                 Aindices.append((b, a, Agj.clamp_(0, shape[2] - 1), Agi.clamp_(0, shape[3] - 1)))  # image, anchor, grid
                 Bindices.append((b, a, Bgj.clamp_(0, shape[2] - 1), Bgi.clamp_(0, shape[3] - 1)))  # image, anchor, grid
+                Cindices.append((b, a, Cgj.clamp_(0, shape[2] - 1), Cgi.clamp_(0, shape[3] - 1)))  # image, anchor, grid
+                Dindices.append((b, a, Dgj.clamp_(0, shape[2] - 1), Dgi.clamp_(0, shape[3] - 1)))  # image, anchor, grid
 
                 Atbox.append(torch.cat((Agxy - Agij, Agot), 1))  # box
                 Btbox.append(torch.cat((Bgxy - Bgij, Bgot), 1))  # box
+                Ctbox.append(torch.cat((Cgxy - Cgij, Cgot), 1))  # box
+                Dtbox.append(torch.cat((Dgxy - Dgij, Dgot), 1))  # box
 
                 anch.append(anchors[a])  # anchors
                 tcls.append(c)  # class 
@@ -613,4 +689,4 @@ class ComputeLoss:
         # print("Bindices: ",Bindices)
         # print("anch: ",anch)
         # sys.exit()
-        return tcls, Atbox, Aindices, Btbox, Bindices, anch
+        return tcls, Atbox, Aindices, Btbox, Bindices, Ctbox, Cindices, Dtbox, Dindices, anch

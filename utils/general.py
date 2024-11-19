@@ -923,10 +923,12 @@ def non_max_suppression(
     if mps:  # MPS not fully supported yet, convert tensors to CPU before NMS
         prediction = prediction.cpu()
     bs = prediction.shape[0]  # batch size
-    nc = prediction.shape[2] - nm - 16  # number of classes
+    nc = prediction.shape[2] - nm - 16 - 10 # number of classes
 
     Axc = prediction[..., 7] > conf_thres  # candidates
     Bxc = prediction[..., 15] > conf_thres  # candidates
+    Cxc = prediction[..., 23] > conf_thres
+    Dxc = prediction[..., 29] > conf_thres
 
     # Settings
     # min_wh = 2  # (pixels) minimum box width and height
@@ -944,9 +946,13 @@ def non_max_suppression(
         # Apply constraints
         # x[((x[..., 2:4] < min_wh) | (x[..., 2:4] > max_wh)).any(1), 4] = 0  # width-height
         temp = []
-        Ax = x[Axc[xi]]  # Ax Ay Ac1 As1 Ac2 As2 Alen Aobj Bx By Bc1 Bs1 Bc2 Bs2 Blen Bobj cls1 cls2
-        Bx = x[Bxc[xi]]  # Ax Ay Ac1 As1 Ac2 As2 Alen Aobj Bx By Bc1 Bs1 Bc2 Bs2 Blen Bobj cls1 cls2
-
+        #    0  1   2   3   4   5    6    7  8  9  10  11  12  13   14   15   16   17  18 19 20 21  22   23  24 25 26 27  28   29   
+        # x: Ax Ay Ac1 As1 Ac2 As2 Alen Aobj Bx By Bc1 Bs1 Bc2 Bs2 Blen Bobj cls1 cls2 Cx Cy Cc Cs Clen Cobj Dx Dy Dc Ds Dlen Dobj
+        Ax = x[Axc[xi]][:,0:8]   #Ax Ay Ac1 As1 Ac2 As2 Alen Aobj
+        Bx = x[Bxc[xi]][:,8:18]  #Bx By Bc1 Bs1 Bc2 Bs2 Blen Bobj cls1 cls2  
+        Cx = x[Cxc[xi]][:,18:24] #Cx Cy Cc Cs Clen Cobj
+        Dx = x[Dxc[xi]][:,24:30] #Dx Dy Dc Ds Dlen Dobj
+      
         # 0  1  2    3   4   5    6    7  8  9  10  11  12  13  14   15   16   17
         # Ax Ay Ac1 As1 Ac2 As2 Alen Aobj Bx By Bc1 Bs1 Bc2 Bs2 Blen Bobj cls1 cls2
 
@@ -965,35 +971,45 @@ def non_max_suppression(
         if not Bx.shape[0]:
             continue
 
-        Ax = Ax[Ax[:, 7].argsort(descending=True)]
-        Bx = Bx[Bx[:, 15].argsort(descending=True)]
+        Ax = Ax[Ax[:, -1].argsort(descending=True)]
+        Bx = Bx[Bx[:, -3].argsort(descending=True)]
+        Cx = Cx[Cx[:, -1].argsort(descending=True)]
+        Dx = Dx[Dx[:, -1].argsort(descending=True)]
+
         Ax=Ax.cpu().numpy()
         Bx=Bx.cpu().numpy()
+        Cx=Cx.cpu().numpy()
+        Dx=Dx.cpu().numpy()
         
         #Apoint Bpoint use nms   
         Ax_idx = nms_by_distance(Ax)
         Bx_idx = nms_by_distance(Bx)
+        Cx_idx = nms_by_distance(Cx)
+        Dx_idx = nms_by_distance(Dx)
         Ax=Ax[Ax_idx]
         Bx=Bx[Bx_idx]
-        
+        Cx=Cx[Cx_idx]
+        Dx=Dx[Dx_idx]
+
         # print("Ax:  ",Ax)
         # print("Bx:  ",Bx)
         for Apidx, Ap in enumerate(Ax):
             for Bpidx, Bp in enumerate(Bx):
-                cls = list(Bp[16:])
+                cls = list(Bp[-2:])
+                Bp = Bp[:-2]
                 point0=(Ap[0],Ap[1])
-                point1=(Bp[8],Bp[9])
+                point1=(Bp[0],Bp[1])
                 Alen = Ap[6]*imgsz
-                Blen = Bp[14]*imgsz
-                meanlen = (Alen+Blen)/2
-                mean_conf = (Ap[7]+Bp[15])/2
+                Blen = Bp[6]*imgsz
+                
+                mean_conf = (Ap[-1]+Bp[-1])/2
                 point0_dest=( point0[0]+Alen*Ap[4], point0[1]+Alen*Ap[5]) 
-                point1_dest=( point1[0]+Blen*Bp[12], point1[1]+Blen*Bp[13]) 
+                point1_dest=( point1[0]+Blen*Bp[4], point1[1]+Blen*Bp[5]) 
 
                 Ac1 = Ap[2]/math.sqrt(Ap[2]*Ap[2]+Ap[3]*Ap[3])
                 As1 = Ap[3]/math.sqrt(Ap[2]*Ap[2]+Ap[3]*Ap[3])
-                Bc1 = Bp[10]/math.sqrt(Bp[10]*Bp[10]+Bp[11]*Bp[11])
-                Bs1 = Bp[11]/math.sqrt(Bp[10]*Bp[10]+Bp[11]*Bp[11])
+                Bc1 = Bp[2]/math.sqrt(Bp[2]*Bp[2]+Bp[3]*Bp[3])
+                Bs1 = Bp[3]/math.sqrt(Bp[2]*Bp[2]+Bp[3]*Bp[3])
                 if(math.sqrt(Ac1*Ac1+As1*As1)==0 or math.sqrt(Bc1*Bc1+Bs1*Bs1)==0):
                     continue
     
@@ -1006,110 +1022,11 @@ def non_max_suppression(
                     abdis = disPts(point0 ,point1)/imgsz
                     abangle = math.atan2(point1[1]-point0[1], point1[0]-point0[0])
 
-                    bcangle = math.atan2(Bp[11], Bp[10])
-                    adangle = math.atan2(Ap[3],  Ap[2])
-
-                    #padding start
-                    # try:
-                    #     # Ac1 = min(max(-1,Ac1),1)
-                    #     # As1 = min(max(-1,As1),1)
-                    #     # Bc1 = min(max(-1,Bc1),1)
-                    #     # Bs1 = min(max(-1,Bs1),1)
-                        
-                    #     Ac1 = Ap[2]
-                    #     As1 = Ap[3]
-                    #     Bc1 = Bp[10]
-                    #     Bs1 = Bp[11]
-
-                    #     angle1 = math.acos(Bc1) #值域[0, π]
-                    #     angle2 = angle1*-1
-                    #     angle3 = math.asin(Bs1) #值域[-π/2，π/2]
-                    #     angle4 = (-1 if angle3<0 else 1 ) * PI - angle3
-                    #     delta13 = get_real_theta(angle1-angle3)
-                    #     delta14 = get_real_theta(angle1-angle4)
-                    #     delta23 = get_real_theta(angle2-angle3)
-                    #     delta24 = get_real_theta(angle2-angle4)
-                    #     if(delta13<=delta14 and delta13<=delta23 and delta13<=delta24):
-                    #         bcangle = angle1 if(abs(Bc1)>abs(Bs1)) else angle3
-                    #     elif(delta14<=delta13 and delta14<=delta23 and delta14<=delta24):
-                    #         bcangle = angle1 if(abs(Bc1)>abs(Bs1)) else angle4
-                    #     elif(delta23<=delta13 and delta23<=delta14 and delta23<=delta24):
-                    #         bcangle = angle2 if(abs(Bc1)>abs(Bs1)) else angle3
-                    #     elif(delta24<=delta13 and delta24<=delta14 and delta24<=delta23):
-                    #         bcangle = angle2 if(abs(Bc1)>abs(Bs1)) else angle4
-                    #     else:
-                    #         print("BC wrong!!!!!!")
-                    #         print(Bc1,Bs1,delta13,delta14,delta23,delta24)
-                    #         sys.exit()
-
-                        # angle1 = math.acos(Ac1) #值域[0, π]
-                        # angle2 = angle1*-1
-                        # angle3 = math.asin(As1) #值域[-π/2，π/2]
-                        # angle4 = (-1 if angle3<0 else 1 ) * PI - angle3
-                        # delta13 = get_real_theta(angle1-angle3)
-                        # delta14 = get_real_theta(angle1-angle4)
-                        # delta23 = get_real_theta(angle2-angle3)
-                        # delta24 = get_real_theta(angle2-angle4)
-                        # if(delta13<=delta14 and delta13<=delta23 and delta13<=delta24):
-                        #     adangle = angle1 if(abs(Ac1)>abs(As1)) else angle3
-                        # elif(delta14<=delta13 and delta14<=delta23 and delta14<=delta24):
-                        #     adangle = angle1 if(abs(Ac1)>abs(As1)) else angle4
-                        # elif(delta23<=delta13 and delta23<=delta14 and delta23<=delta24):
-                        #     adangle = angle2 if(abs(Ac1)>abs(As1)) else angle3
-                        # elif(delta24<=delta13 and delta24<=delta14 and delta24<=delta23):
-                        #     adangle = angle2 if(abs(Ac1)>abs(As1)) else angle4
-                        # else:    
-                        #     print("AD wrong!!!!!!")
-                    # except:
-                    #     print(Ap[2],Ap[3],Bp[10],Bp[11])
-                    #     print(Ap[2]/math.sqrt(Ap[2]*Ap[2]+Ap[3]*Ap[3]))
-                    #     print(Ac1,As1,Bc1,Bs1)
-                    #     sys.exit()
-
-                    # if(abs(Bc1)>abs(Bs1)):
-                    #     pad_bcangle = math.acos(Bc1)  #值域[0, π]
-                    #     delta1 = get_real_theta(pad_bcangle-bcangle)
-                    #     delta2 = get_real_theta(-1*pad_bcangle-bcangle)
-                    #     if((delta1<=delta2) and  (delta1<0.1)):
-                    #         bcangle = pad_bcangle
-                    #     elif((delta2<=delta1) and  (delta2<0.1)):
-                    #         bcangle = -1*pad_bcangle
-                    #     else:
-                    #        print("!!!  ",pad_bcangle,bcangle,delta1,delta2,Bc1,Bs1)
-                    #        print("Bc something wrong!!!!!!!!!!!! ")
-                    #        sys.exit()
-                    # else:
-                    #     pad_bcangle = math.asin(Bs1)  #值域[-π/2，π/2]
-                    #     if(get_real_theta(pad_bcangle-bcangle) < 0.1):
-                    #         bcangle = pad_bcangle
-                    #     elif (get_real_theta(   (-1 if pad_bcangle<0 else 1 ) * PI - pad_bcangle   -    bcangle) < 0.1):
-                    #         bcangle = (-1 if pad_bcangle<0 else 1 ) * PI - pad_bcangle 
-                    #     else:
-                    #        print("Bs something wrong!!!!!!!!!!!! ")
-
-                    
-                    # if(abs(Ac1)>abs(As1)):
-                    #     pad_adangle = math.acos(Ac1)  #值域[0, π]
-                    #     delta1 = get_real_theta(pad_adangle-adangle)
-                    #     delta2 = get_real_theta(-1*pad_adangle-adangle)
-                    #     if((delta1<=delta2) and  (delta1<0.1)):
-                    #         adangle = pad_adangle
-                    #     elif((delta2<=delta1) and  (delta2<0.1)):
-                    #         adangle = -1*pad_adangle
-                    #     else:
-                    #        print("Ac something wrong!!!!!!!!!!!! ")
-                    # else:
-                    #     pad_adangle = math.asin(As1)  #值域[-π/2，π/2]
-                    #     if(get_real_theta(pad_adangle-adangle) < 0.1):
-                    #         adangle = pad_adangle
-                    #     elif (get_real_theta(   (-1 if pad_adangle<0 else 1 ) * PI - pad_adangle   -    adangle) < 0.1):
-                    #         adangle = (-1 if pad_adangle<0 else 1 ) * PI - pad_adangle 
-                    #     else:
-                    #        print("As something wrong!!!!!!!!!!!! ")
-                    #padding end
+                    bcangle = math.atan2(Bp[3], Bp[2])
+                    adangle = math.atan2(Ap[3], Ap[2])
 
 
-                    tm = math.atan2((Bp[11]+Ap[3])/2, (Bp[10]+Ap[2])/2)
+                    tm = math.atan2((Bp[3]+Ap[3])/2, (Bp[2]+Ap[2])/2)
                     #npy = list([point0[0], point0[1], abdis, math.cos(abangle), math.sin(abangle), math.cos(tm), math.sin(tm), mean_conf]) + cls
                     npy = list([point0[0], point0[1], abdis, math.cos(abangle), math.sin(abangle), math.cos(adangle), math.sin(adangle), math.cos(bcangle), math.sin(bcangle), mean_conf]) + cls
                     #npy = list([point0[0], point0[1], abdis, math.cos(abangle), math.sin(abangle), Ap[2], Ap[3], Bp[10], Bp[11], mean_conf]) + cls
@@ -1118,26 +1035,6 @@ def non_max_suppression(
                     temp.append(npy)
 
 
-                '''
-                Acls = list(Ap[16:])
-                dist = math.sqrt(math.pow(Ap[0]-Bp[8], 2) + math.pow(Ap[1]-Bp[9], 2))/640
- 
-                Aangle = math.atan2(Ap[4],Ap[5])
-                Bangle = math.atan2(Bp[12],Bp[13])
-                mean_conf = (Ap[7]+Bp[15])/2
-                mean_length = (Ap[6]+Bp[14])/2
-                total_angle = (math.fabs(Aangle) + math.fabs(Bangle))/3.1415926*180
-
-                is_angle_ok = (Aangle*Bangle<0) and (total_angle>150) and (total_angle<210)
-                is_dist_ok = (dist>mean_length*0.8) and (dist<mean_length*1.2)
-
-                if(is_angle_ok and is_dist_ok):
-                    abangle = math.atan2(Bp[9]-Ap[1], Bp[8]-Ap[0])
-                    npy = list([Ap[0], Ap[1], dist, math.cos(abangle), math.sin(abangle), Ap[2], Ap[3], mean_conf]) + Acls
-                    npy = np.array(npy)
-                    npy=torch.tensor(npy).to(prediction.device)
-                    temp.append(npy)
-                '''
         if(0 == len(temp)):
             continue
         x = torch.stack(temp,dim=0)

@@ -48,7 +48,7 @@ class Detect(nn.Module):
     def __init__(self, nc=80, anchors=(), ch=(), inplace=True):  # detection layer
         super().__init__()
         self.nc = nc  # number of classes
-        self.no = nc + 16  # number of outputs per anchor # 16 = Ax Ay Ac1 As1 Ac2 As2 Alen Aobj  Bx By Bc1 Bs1  Bc2 Bs2 Blen Bobj cls1 cls2
+        self.no = nc + 16 + 12  # number of outputs per anchor # 16 = Ax Ay Ac1 As1 Ac2 As2 Alen Aobj  Bx By Bc1 Bs1  Bc2 Bs2 Blen Bobj cls1 cls2
         self.nl = len(anchors)  # number of detection layers
         self.na = len(anchors[0])  #len(anchors[0]) // 2  # number of anchors only length hase anchor
         self.grid = [torch.empty(0) for _ in range(self.nl)]  # init grid
@@ -70,6 +70,7 @@ class Detect(nn.Module):
             output[i] = self.m_pre(x)
             output[i] = self.m(output[i])  # conv
             bs, _, ny, nx = output[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
+           
             output[i] = output[i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
 
             if not self.training:  # inference
@@ -83,27 +84,38 @@ class Detect(nn.Module):
                     y = torch.cat((xy, wh, conf.sigmoid(), mask), 4)
                 else:  # Detect (boxes only)
                     #target-subset of predictions #pred: Ax Ay Ac1 As1 Ac2 As2 Alen Aobj  Bx By Bc1 Bs1  Bc2 Bs2 Blen Bobj cls1 cls2
-                    Axy, Ac1s1c2s2, Alen, Aobj, Bxy, Bc1s1c2s2, Blen, Bobj, class12 = output[i].split((2, 4, 1, 1, 2, 4, 1, 1, self.nc), 4)
+                    Axy, Ac1s1c2s2, Alen, Aobj, Bxy, Bc1s1c2s2, Blen, Bobj, class12, Cxy, Ccs, Clen, Cobj, Dxy, Dcs, Dlen, Dobj= output[i].split((2, 4, 1, 1, 2, 4, 1, 1, self.nc, 2, 2, 1, 1, 2, 2, 1, 1), 4)
                     if hyp["USE_THREE_POSITIVE_SAMPLE"]:
                         Axy = (Axy.sigmoid()*2  + self.grid[i]) * self.stride[i]
                         Bxy = (Bxy.sigmoid()*2  + self.grid[i]) * self.stride[i]  # xy
                     else:
                         Axy = (Axy.sigmoid()  + self.grid[i]) * self.stride[i]
                         Bxy = (Bxy.sigmoid()  + self.grid[i]) * self.stride[i]  # xy
+                        Cxy = (Cxy.sigmoid()  + self.grid[i]) * self.stride[i]
+                        Dxy = (Dxy.sigmoid()  + self.grid[i]) * self.stride[i]  # xy
+                    
                     Ac1s1c2s2 = Ac1s1c2s2.tanh() 
                     Bc1s1c2s2 = Bc1s1c2s2.tanh()
+                    Ccs = Ccs.tanh() 
+                    Dcs = Dcs.tanh()
+
                     Alen = (Alen.sigmoid()) * self.anchor_grid[i]
                     Blen = (Blen.sigmoid()) * self.anchor_grid[i]
+                    Clen = (Clen.sigmoid()) * self.anchor_grid[i]
+                    Dlen = (Dlen.sigmoid()) * self.anchor_grid[i]
 
                     Aobj = Aobj.sigmoid() 
                     Bobj = Bobj.sigmoid()
+                    Cobj = Cobj.sigmoid() 
+                    Dobj = Dobj.sigmoid()
+
                     class12 = class12.sigmoid()
                     
                     #padding not care about class
                     if 0 == hyp["CAREABOUT_LOT_TYPE"]:
                         class12[:,:,:,:,0] = 1
                         class12[:,:,:,:,1] = 0
-                    y = torch.cat((Axy, Ac1s1c2s2, Alen, Aobj, Bxy, Bc1s1c2s2, Blen, Bobj, class12), 4)
+                    y = torch.cat((Axy, Ac1s1c2s2, Alen, Aobj, Bxy, Bc1s1c2s2, Blen, Bobj, class12, Cxy, Ccs, Clen, Cobj, Dxy, Dcs, Dlen, Dobj ), 4)
                 z.append(y.view(bs, self.na * nx * ny, self.no)) #nhwc
         return output if self.training else (torch.cat(z, 1),) if self.export else (torch.cat(z, 1), output)
 
