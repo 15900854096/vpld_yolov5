@@ -240,12 +240,12 @@ def run(
                                         labels=lb,
                                         multi_label=True,
                                         agnostic=single_cls,
-                                        max_det=max_det)
+                                        max_det=max_det)["vpld"]
             
             # 0 1  2   3  4  5   6   7   8   9   10
             # x y len c1 s1 ADc ADs BCc BCs conf cls x&y:base_640  others:normal 1
         # Metrics
-        for si, pred in enumerate(preds["vpld"]):
+        for si, pred in enumerate(preds):
             ori_shape = shapes[si][0]
             ipt_shape = shapes[si][1]
             labels = targets[targets[:, 0] == si, 1:][:,:9] #lebels: label x1 y1 x2 y2 x3 y3 x4 y4  all is BatchNorm_1

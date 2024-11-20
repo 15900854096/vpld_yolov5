@@ -12,6 +12,7 @@ import os
 import random
 import copy
 from pathlib import Path
+import pandas as pd
 import numpy as np
 import shapely
 from shapely.geometry import Polygon, MultiPoint
@@ -106,7 +107,7 @@ class QFocalLoss(nn.Module):
         else:  # 'none'
             return loss
 
-
+priflag=True
 class ComputeLoss:
     sort_obj_iou = False
 
@@ -190,7 +191,7 @@ class ComputeLoss:
             nB = Bb.shape[0]
             nC = Cb.shape[0]
             nD = Db.shape[0]
-            assert( (Ab.shape[0]==Bb.shape[0]) and (Ab.shape[0]==Cb.shape[0]) and (Ab.shape[0]==Db.shape[0]) )
+            assert( (nA==nB) and (nA==nC) and (nA==nD) )
             n = nA + nB  # number of targets
             if (need_cal):
                 start = perf_counter_ns()
@@ -338,12 +339,12 @@ class ComputeLoss:
                 #    j = iou.argsort()
                 #    b, a, gj, gi, iou = b[j], a[j], gj[j], gi[j], iou[j]
                 #if self.gr < 1:
-                #    iou = (1.0 - self.gr) + self.gr * iou   
+                #    iou = (1.0 - self.gr) + self.gr * iou
                 Atobj[Ab, Aa, Agj, Agi] = 1  # iou ratio
                 Btobj[Bb, Ba, Bgj, Bgi] = 1  # iou ratio
                 Ctobj[Cb, Ca, Cgj, Cgi] = 1  # iou ratio
                 Dtobj[Db, Da, Dgj, Dgi] = 1  # iou ratio
-
+                
                 # Classification
                 if self.nc > 1:  # cls loss (only if multiple classes)
                     t = torch.full_like(pcls, self.cn, device=self.device)  # targets
@@ -388,6 +389,7 @@ class ComputeLoss:
             else:
                 Bselect = torch.ones(pi.shape[:4], dtype=pi.dtype, device=self.device)
             
+            _baseline_neg = 20
             if nC:
                 Cselect = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)
                 batch_list = torch.arange(0, _bs).repeat(_baseline_neg*_as)
@@ -415,16 +417,44 @@ class ComputeLoss:
                 Dselect = torch.ones(pi.shape[:4], dtype=pi.dtype, device=self.device)
             
         
-            Aobji = torch.sum(self.MSEobj(pi[..., 7].sigmoid(),  Atobj) * Aselect) / torch.sum(Aselect)
-            Bobji = torch.sum(self.MSEobj(pi[..., 15].sigmoid(), Btobj) * Bselect) / torch.sum(Bselect)
-            Cobji = self.MSEmean(pi[..., 23].sigmoid(), Ctobj)
-            Dobji = self.MSEmean(pi[..., 29].sigmoid(), Dtobj) 
+            Aobji = torch.sum(self.MSEnone(pi[..., 7].sigmoid(),  Atobj) * Aselect) / torch.sum(Aselect)
+            Bobji = torch.sum(self.MSEnone(pi[..., 15].sigmoid(), Btobj) * Bselect) / torch.sum(Bselect)
+            # Cobji = self.MSEmean(pi[..., 23].sigmoid(), Ctobj)
+            # Dobji = self.MSEmean(pi[..., 29].sigmoid(), Dtobj) 
+            Cobji = torch.sum(self.MSEnone(pi[..., 23].sigmoid(), Ctobj) * Cselect) / torch.sum(Cselect)
+            Dobji = torch.sum(self.MSEnone(pi[..., 29].sigmoid(), Dtobj) * Dselect) / torch.sum(Dselect)
+            
+            #assert(nC==torch.sum(Ctobj)) #一个角点作为A|B点，他只属于一个库位，一个角点作为C|D点，他可能属于两个个库位
+            
+            global priflag
+            if(epoch>=500 and epoch%20==0 and priflag):
+                priflag=False
+                test = pi[..., 23].sigmoid()
+                test = test[test>0.9]
+                if(len(test)>=nC*2):
+                    print("have lot false detect!!!!!!!!!!!!!!")
+            else:
+                prifla=True    
+            #print(torch.sum(Ctobj))
+
+            # np.set_printoptions(threshold=np.inf)
+            # pd.set_option('display.width', 300) # 设置字符显示宽度
+            # pd.set_option('display.max_rows', None) # 设置显示最大行
+            # pd.set_option('display.max_columns', None) # 设置显示最大列，None为显示所有列
+            # long_series = pd.Series(np.array(Dtobj[0,0,39,:].cpu()))
+            # print(long_series)
+            # df = pd.DataFrame(np.array(Ctobj[0][0].cpu()))
+            # df.to_excel(r"11.xlsx", sheet_name="sheet1", index= False,encoding="utf-8")
+            # df = pd.DataFrame(np.array(Cselect[0][0].cpu()))
+            # df.to_excel(r"12.xlsx", sheet_name="sheet1", index= False,encoding="utf-8")
+            # sys.exit()
+
             # print(Ctobj)
             # print(torch.sum(Ctobj))
             # print(torch.sum(Cselect))
             # print(Cb, Ca, Cgj, Cgi)
             # sys.exit()
-            obji = Aobji+Bobji+Cobji+Dobji
+            obji = Aobji+Bobji+Cobji*4+Dobji*4
             if (need_cal):
                 end = perf_counter_ns()
                 self.consum_time[2] += end-start
@@ -700,5 +730,5 @@ class ComputeLoss:
         # print("Dtbox: ",Dtbox)
         # print("Dindices: ",Dindices)
         # print("anch: ",anch)
-        # sys.exit()
+        #sys.exit()
         return tcls, Atbox, Aindices, Btbox, Bindices, Ctbox, Cindices, Dtbox, Dindices, anch

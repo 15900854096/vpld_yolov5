@@ -109,6 +109,8 @@ class Detect(nn.Module):
                     Cobj = Cobj.sigmoid() 
                     Dobj = Dobj.sigmoid()
 
+                    #print( len(Aobj[Aobj>0.9]),len(Bobj[Bobj>0.9]),len(Cobj[Cobj>0.9]),len(Dobj[Dobj>0.9]))
+                    
                     class12 = class12.sigmoid()
                     
                     #padding not care about class

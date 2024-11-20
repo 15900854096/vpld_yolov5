@@ -125,6 +125,10 @@ def create_dataloader(path,
     if rect and shuffle:
         LOGGER.warning('WARNING ⚠️ --rect is incompatible with DataLoader shuffle, setting shuffle=False')
         shuffle = False
+    if(batch_size==1 and workers==1):
+        LOGGER.warning('WARNING ⚠️ batch_size=workers=1, I think you are debuging, setting augment=False shuffle=False')
+        augment = False
+        shuffle = False
     with torch_distributed_zero_first(rank):  # init dataset *.cache only once if DDP
         dataset = LoadImagesAndLabels(
             path,
@@ -690,7 +694,7 @@ class LoadImagesAndLabels(Dataset):
             shapes = (h0, w0), ((h / h0, w / w0), pad)  # for COCO mAP rescaling
 
             labels = self.labels[index].copy()
-            # print(self.im_files[index])
+            #print(self.im_files[index])
             # print(self.labels[index])
             #if labels.size:  # normalized xywh to pixel xyxy format
             #    labels[:, 1:] = xywhn2xyxy(labels[:, 1:], ratio[0] * w, ratio[1] * h, padw=pad[0], padh=pad[1])
@@ -719,6 +723,10 @@ class LoadImagesAndLabels(Dataset):
         boarder_second = 30
         for idx,lot in enumerate(temp_labels):
             Ax,Ay,Bx,By,Cx,Cy,Dx,Dy=lot[1],lot[2],lot[3],lot[4],lot[5],lot[6],lot[7],lot[8]
+            # if(Cx>self.img_size or Cy>self.img_size or Dx>self.img_size or Dy>self.img_size):
+            #     print(self.im_files[index])
+            #     print(Ax,Ay,Bx,By,Cx,Cy,Dx,Dy)
+
             direction_angle = math.atan2(Cy-Ay, Cx-Ax)
             direction_leng = min(math.sqrt(math.pow(Ax-Dx,2)+math.pow(Ay-Dy,2)) , math.sqrt(math.pow(Bx-Cx,2)+math.pow(By-Cy,2)))
             if(Ax<boarder_first or Ax>self.img_size-boarder_first or
@@ -746,7 +754,7 @@ class LoadImagesAndLabels(Dataset):
         
         #if nl:
         #    labels[:, 1:5] = xyxy2xywhn(labels[:, 1:5], w=img.shape[1], h=img.shape[0], clip=True, eps=1E-3)
-        if self.augment:
+        if 0: #self.augment:
             # Albumentations
             #img, labels = self.albumentations(img, labels)
             nl = len(labels)  # update after albumentations
@@ -793,6 +801,7 @@ class LoadImagesAndLabels(Dataset):
             if random.random() < hyp['resize']:
                 img, labels = image_gt_data_resize_all(img, labels)
                 nl = len(labels)
+
             # Cutouts
             # labels = cutout(img, labels, p=0.5)
             # nl = len(labels)  # update after cutout
