@@ -888,6 +888,12 @@ def get_real_theta(delta):
         delta = abs(delta)
         return delta if delta<PI else 2*PI-delta
 
+def angle_by_atan2_opposite(ang1,ang2):
+    cossim = (math.cos(ang1)*math.cos(ang2)+math.sin(ang1)*math.sin(ang2))
+    cossim = min(max(cossim,-1),1)
+    resang = math.acos(cossim)/PI*180
+    return resang>175
+
 ccnt = 10
 def non_max_suppression(
         prediction,
@@ -989,7 +995,7 @@ def non_max_suppression(
         Bx=Bx.cpu().numpy()
         Cx=Cx.cpu().numpy()
         Dx=Dx.cpu().numpy()
-        
+
         #Apoint Bpoint use nms   
         Ax_idx = nms_by_distance(Ax)
         Bx_idx = nms_by_distance(Bx)
@@ -1042,6 +1048,28 @@ def non_max_suppression(
                     #npy = list([point0[0], point0[1], abdis, math.cos(abangle), math.sin(abangle), math.cos(tm), math.sin(tm), mean_conf]) + cls
                     npy = list([point0[0], point0[1], abdis, math.cos(abangle), math.sin(abangle), math.cos(adangle), math.sin(adangle), math.cos(bcangle), math.sin(bcangle), mean_conf]) + cls
                     #npy = list([point0[0], point0[1], abdis, math.cos(abangle), math.sin(abangle), Ap[2], Ap[3], Bp[10], Bp[11], mean_conf]) + cls
+                    
+                    
+                    for cpoint in Cx:
+                        cx, cy, cc, cs, clen, _ = cpoint
+                        cbangle = math.atan2(cs, cc)
+                        cdest = (cx+clen*cc*imgsz, cy+clen*cs*imgsz)
+                        if( (disPts(point1 ,cdest)<20) and angle_by_atan2_opposite(cbangle,bcangle) ):
+                            bcreallangle = math.atan2(cy-point1[1], cx-point1[0])
+                            npy[7] = math.cos(bcreallangle)
+                            npy[8] = math.sin(bcreallangle)
+
+                    for dpoint in Dx:
+                        dx, dy, dc, ds, dlen, _ = dpoint
+                        daangle = math.atan2(ds, dc)
+                        ddest = (dx+dlen*dc*imgsz, dy+dlen*ds*imgsz)
+                        if( (disPts(point0 ,ddest)<20)  and angle_by_atan2_opposite(adangle,daangle) ):
+                            dareallangle = math.atan2(dy-point0[1], dx-point0[0])
+                            npy[5] = math.cos(dareallangle)
+                            npy[6] = math.sin(dareallangle)
+                    
+                    
+                    
                     npy = np.array(npy)
                     npy=torch.tensor(npy).to(prediction.device)
                     temp.append(npy)

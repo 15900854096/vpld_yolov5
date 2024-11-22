@@ -172,8 +172,8 @@ class ComputeLoss:
         random.seed(time.time_ns()%(2**32 - 1))
         # Losses
         for i, pi in enumerate(p):  # layer index, layer predictions
-            rowlist = range(pi.shape[2]-1)
-            collist = range(pi.shape[3]-1)
+            rowlist = range(pi.shape[2])
+            collist = range(pi.shape[3])
             Ab, Aa, Agj, Agi = Aindices[i]  # image, anchor, gridy, gridx
             Bb, Ba, Bgj, Bgi = Bindices[i]  # image, anchor, gridy, gridx
             Cb, Ca, Cgj, Cgi = Cindices[i]  # image, anchor, gridy, gridx
@@ -275,7 +275,8 @@ class ComputeLoss:
                             + torch.sum(self.MSEnone(Bpbox[:,0:2], Btbox[i][:,0:2]) * Bitst) / (nB*2) \
                             + torch.sum(self.MSEnone(Cpbox[:,0:2], Ctbox[i][:,0:2]) * Citst) / (nC*2) \
                             + torch.sum(self.MSEnone(Dpbox[:,0:2], Dtbox[i][:,0:2]) * Ditst) / (nD*2) 
-                
+                            
+
                 # if 0: #cos 和 sin 是否先归一化
                 #     Apbox_normal = torch.nn.functional.normalize(Apbox[:,2:4], dim=1, eps=1e-12)
                 #     Bpbox_normal = torch.nn.functional.normalize(Bpbox[:,2:4], dim=1, eps=1e-12)
@@ -385,11 +386,9 @@ class ComputeLoss:
                 list1 = random.choices(rowlist, k = nB * hyp["NEG_POS_RATE"])
                 list2 = random.choices(collist, k = nB * hyp["NEG_POS_RATE"])
                 Bselect[Bb.repeat(hyp["NEG_POS_RATE"]), Ba.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1 
-                    
             else:
                 Bselect = torch.ones(pi.shape[:4], dtype=pi.dtype, device=self.device)
             
-            _baseline_neg = 20
             if nC:
                 Cselect = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)
                 batch_list = torch.arange(0, _bs).repeat(_baseline_neg*_as)
@@ -419,23 +418,9 @@ class ComputeLoss:
         
             Aobji = torch.sum(self.MSEnone(pi[..., 7].sigmoid(),  Atobj) * Aselect) / torch.sum(Aselect)
             Bobji = torch.sum(self.MSEnone(pi[..., 15].sigmoid(), Btobj) * Bselect) / torch.sum(Bselect)
-            # Cobji = self.MSEmean(pi[..., 23].sigmoid(), Ctobj)
-            # Dobji = self.MSEmean(pi[..., 29].sigmoid(), Dtobj) 
             Cobji = torch.sum(self.MSEnone(pi[..., 23].sigmoid(), Ctobj) * Cselect) / torch.sum(Cselect)
             Dobji = torch.sum(self.MSEnone(pi[..., 29].sigmoid(), Dtobj) * Dselect) / torch.sum(Dselect)
             
-            #assert(nC==torch.sum(Ctobj)) #一个角点作为A|B点，他只属于一个库位，一个角点作为C|D点，他可能属于两个个库位
-            
-            global priflag
-            if(epoch>=500 and epoch%20==0 and priflag):
-                priflag=False
-                test = pi[..., 23].sigmoid()
-                test = test[test>0.9]
-                if(len(test)>=nC*2):
-                    print("have lot false detect!!!!!!!!!!!!!!")
-            else:
-                prifla=True    
-            #print(torch.sum(Ctobj))
 
             # np.set_printoptions(threshold=np.inf)
             # pd.set_option('display.width', 300) # 设置字符显示宽度
@@ -454,7 +439,7 @@ class ComputeLoss:
             # print(torch.sum(Cselect))
             # print(Cb, Ca, Cgj, Cgi)
             # sys.exit()
-            obji = Aobji+Bobji+Cobji*4+Dobji*4
+            obji = Aobji + Bobji + Cobji + Dobji
             if (need_cal):
                 end = perf_counter_ns()
                 self.consum_time[2] += end-start
