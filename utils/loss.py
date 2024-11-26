@@ -536,6 +536,10 @@ class ComputeLoss:
         tmp[:,25:26] = torch.sin(theta_DA)
         tmp[:,26:27] = lengt_AD
 
+        #添加一个补丁，由于以前的标注方法有问题，现在统一自车在库位里面，这个库位属于可泊库位
+        if (not hyp["ALL_PARKING_LOT_SAME_WEIGHT"]):
+            tmp[tmp[:,16]>0.15,1]=0 #车子15%面积在库位里面，以前打的标签是不可泊，现在统一改成可泊库位
+
         targets=tmp
         #   0      1   2  3   4  5  6    7  8          9  10 11 12  13  14 15     16     17 18  19   20    21   22 23  24   25    26
         #img_id occupy Ax Ay c1 s1  leng c2 s2   &     Bx By c1 s1 leng c2 s2 intersects Cx Cy CBc1 CBs1 CBleng Dx Dy DAc1 DAs1 DAleng
