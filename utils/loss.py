@@ -259,7 +259,7 @@ class ComputeLoss:
                     Bweight = torch.pow((1.5 - torch.abs(Btbox[i][:,2:4])), 2)
                     losstheAD =  torch.sum(self.MSEthetaAD(Apbox_normal, Atbox[i][:,2:4]) * Aweight * Aitst * AweightstheAD) / (na*2) \
                               +  torch.sum(self.MSEthetaAD(Bpbox_normal, Btbox[i][:,2:4]) * Bweight * Bitst * BweightstheAD) / (nb*2)
-                elif 1: 
+                elif 0: 
                     if 0: #直接使用余弦相似度 有一个问题就是即使余弦相似度到了0.9999，弧度0.014142253477512098，弧度差距还是蛮大的，不符合库位检测精度要求
                         Acos_sim = torch.cosine_similarity(Apbox_normal, Atbox[i][:,2:4], eps=1e-6, dim=1)
                         Bcos_sim = torch.cosine_similarity(Bpbox_normal, Btbox[i][:,2:4], eps=1e-6, dim=1)

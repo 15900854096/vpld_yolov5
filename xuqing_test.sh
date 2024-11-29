@@ -1,6 +1,6 @@
 python ./detect.py \
---weights ./runs/train/20241111/weights/best.pt \
---source /home/xuqing/vpld_groundtruth_repair/yantai/laji \
+--weights ./runs/train/20241127/weights/best.pt \
+--source /home/xuqing/ori \
 --data ./xuqing/VOC_xuqing.yaml \
 --device 7 \
 --imgsz 640 \
