@@ -1036,6 +1036,7 @@ def non_max_suppression(
                 cosvalue = min(1,cosvalue)
                 Adire_Bdire_angle = math.acos( cosvalue )
                 
+                #Adire_Bdire_angle<PI/18 代表AD方向与BC方向需要平行
                 if(disPts(point0 ,point1_dest)<Blen*0.3 and disPts(point0_dest ,point1)<Alen*0.3 and Adire_Bdire_angle<PI/18):
                     abdis = disPts(point0 ,point1)/imgsz
                     abangle = math.atan2(point1[1]-point0[1], point1[0]-point0[0])

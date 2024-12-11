@@ -270,11 +270,13 @@ class ComputeLoss:
                 BweightstheAD[Btbox[i][:,6:7]>0.375] = 0.25
                 BweightstheAD=torch.concat((BweightstheAD,BweightstheAD),axis=1)
                 
-                
+                #所泊库位与其他库位重要性不一样，需要有所平衡，通过Aitst调节
+                #CD角点的位置由于水平和垂直的缘故，重要性也不一样，通过BweightstheAD来调节
+                #AB角点位置不论水平还是垂直，都很重要
                 lossxyABCD  = torch.sum(self.MSEnone(Apbox[:,0:2], Atbox[i][:,0:2]) * Aitst) / (nA*2) \
                             + torch.sum(self.MSEnone(Bpbox[:,0:2], Btbox[i][:,0:2]) * Bitst) / (nB*2) \
-                            + torch.sum(self.MSEnone(Cpbox[:,0:2], Ctbox[i][:,0:2]) * Citst) / (nC*2) \
-                            + torch.sum(self.MSEnone(Dpbox[:,0:2], Dtbox[i][:,0:2]) * Ditst) / (nD*2) 
+                            + torch.sum(self.MSEnone(Cpbox[:,0:2], Ctbox[i][:,0:2]) * Citst * BweightstheAD) / (nC*2) \
+                            + torch.sum(self.MSEnone(Dpbox[:,0:2], Dtbox[i][:,0:2]) * Ditst * AweightstheAD) / (nD*2) 
                             
 
                 # if 0: #cos 和 sin 是否先归一化
@@ -310,26 +312,27 @@ class ComputeLoss:
                 #     losstheAD =  torch.sum(self.MSEnone(Apbox_normal, Atbox[i][:,2:4]) * Aitst * AweightstheAD) / (nA*2) \
                 #               +  torch.sum(self.MSEnone(Bpbox_normal, Btbox[i][:,2:4]) * Bitst * BweightstheAD) / (nB*2)
 
+                #A->D B->C C->B D->A角度对于所泊库位|其他库位、垂直库位|水平库位都有一定关系，侧重点要有所区别
                 losstheAD = torch.sum(self.MSEnone(Apbox[:,2:4], Atbox[i][:,2:4]) * Aitst * AweightstheAD) / (nA*2) 
                 losstheBC = torch.sum(self.MSEnone(Bpbox[:,2:4], Btbox[i][:,2:4]) * Bitst * BweightstheAD) / (nB*2)
                     
-                losstheCB = torch.sum(self.MSEnone(Cpbox[:,2:4], Ctbox[i][:,2:4]) * Citst * AweightstheAD) / (nC*2)
-                losstheDA = torch.sum(self.MSEnone(Dpbox[:,2:4], Dtbox[i][:,2:4]) * Ditst * BweightstheAD) / (nD*2)
+                losstheCB = torch.sum(self.MSEnone(Cpbox[:,2:4], Ctbox[i][:,2:4]) * Citst * BweightstheAD) / (nC*2)
+                losstheDA = torch.sum(self.MSEnone(Dpbox[:,2:4], Dtbox[i][:,2:4]) * Ditst * AweightstheAD) / (nD*2)
                                             
-                losstheAB = torch.sum(self.MSEnone(Apbox[:,4:6], Atbox[i][:,4:6])) / (nA*2) 
-                losstheBA = torch.sum(self.MSEnone(Bpbox[:,4:6], Btbox[i][:,4:6])) / (nB*2)
+                losstheAB = torch.sum(self.MSEnone(Apbox[:,4:6], Atbox[i][:,4:6]) * Aitst ) / (nA*2) 
+                losstheBA = torch.sum(self.MSEnone(Bpbox[:,4:6], Btbox[i][:,4:6]) * Bitst ) / (nB*2)
                 
                 # losstheAD = torch.sum(self.MSEnone(torch.atan2(Apbox[:,2:3],Apbox[:,3:4]) , torch.atan2(Atbox[i][:,2:3],Atbox[i][:,3:4])) * Aitst[:,0:1] * AweightstheAD) / nA  \
                 #           + torch.sum(self.MSEnone(torch.atan2(Bpbox[:,2:3],Bpbox[:,3:4]) , torch.atan2(Btbox[i][:,2:3],Btbox[i][:,3:4])) * Bitst[:,0:1] * BweightstheAD) / nB 
                 # losstheAB = torch.sum(self.MSEnone(torch.atan2(Apbox[:,4:5],Apbox[:,5:6]) , torch.atan2(Atbox[i][:,4:5],Atbox[i][:,5:6]))) / nA  \
                 #           + torch.sum(self.MSEnone(torch.atan2(Bpbox[:,4:5],Bpbox[:,5:6]) , torch.atan2(Btbox[i][:,4:5],Btbox[i][:,5:6]))) / nB 
                           
-                losslenAB = torch.sum(self.MSEnone(Apbox[:,6:7], Atbox[i][:,6:7])) / (nA) 
-                losslenBA = torch.sum(self.MSEnone(Bpbox[:,6:7], Btbox[i][:,6:7])) / (nB)
-                losslenCB = torch.sum(self.MSEnone(Cpbox[:,4:5], Ctbox[i][:,4:5])) / (nC)
-                losslenDA = torch.sum(self.MSEnone(Dpbox[:,4:5], Dtbox[i][:,4:5])) / (nD)
+                losslenAB = torch.sum(self.MSEnone(Apbox[:,6:7], Atbox[i][:,6:7]) * Aitst ) / (nA) 
+                losslenBA = torch.sum(self.MSEnone(Bpbox[:,6:7], Btbox[i][:,6:7]) * Bitst ) / (nB)
+                losslenCB = torch.sum(self.MSEnone(Cpbox[:,4:5], Ctbox[i][:,4:5]) * Citst * BweightstheAD) / (nC)
+                losslenDA = torch.sum(self.MSEnone(Dpbox[:,4:5], Dtbox[i][:,4:5]) * Ditst * AweightstheAD) / (nD)
                 
-                lbox += lossxyABCD * 1 + (losslenAB +losslenBA) * 0.75 + (losstheAB + losstheBA) * 0.75 + (losstheAD + losstheBC + losstheCB + losstheDA) * 1.5 + (losslenCB + losslenDA)*1.5
+                lbox += lossxyABCD * 1.5 + (losslenAB +losslenBA) * 0.75 + (losstheAB + losstheBA) * 0.75 + (losstheAD + losstheBC + losstheCB + losstheDA) * 0.75 + (losslenCB + losslenDA)*0.75
                     
                 #iou = bbox_iou(pbox, tbox[i], CIoU=True).squeeze()  # iou(prediction, target)
                 #lbox += (1.0 - iou).mean()  # iou loss
@@ -347,7 +350,7 @@ class ComputeLoss:
                 Dtobj[Db, Da, Dgj, Dgi] = 1  # iou ratio
                 
                 # Classification
-                if self.nc > 1:  # cls loss (only if multiple classes)
+                if 0: #self.nc > 1:  # cls loss (only if multiple classes)
                     t = torch.full_like(pcls, self.cn, device=self.device)  # targets
                     t[range(nB), tcls[i]] = self.cp
                     lcls += self.MSEmean(pcls.sigmoid(), t) #self.BCEcls(pcls, t)  # BCE
