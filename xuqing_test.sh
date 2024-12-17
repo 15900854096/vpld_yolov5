@@ -1,6 +1,6 @@
 python ./detect.py \
---weights ./runs/train/exp5/weights/last_800.pt \
---source /home/xuqing/vpld_groundtruth_repair/public_Boden/AVM_000000_001999/images \
+--weights ./runs/train/exp4/weights/last_450.pt \
+--source /home/xuqing/ori \
 --data ./xuqing/VOC_xuqing.yaml \
 --device 3 \
 --imgsz 640 \

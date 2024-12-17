@@ -181,7 +181,7 @@ def run(
                     cv2.circle(im0, cpoint1, 1, (0,0,255), 4)
                     cv2.arrowedLine(im0, cpoint1, cpoint2, (255,0,0), 1, 4)
 
-            if 0:#len(det):
+            if len(det):
                 # Rescale boxes from img_size to im0 size
                 det[:, :2] = scale_boxes(im.shape[2:], det[:, :2], im0.shape).round() #base_640 to base_600
                 

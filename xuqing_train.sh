@@ -3,11 +3,11 @@ python train.py  \
 --weights xuqing/yolov5s.pt  \
 --cfg ./xuqing/yolov5s_xuqing.yaml  \
 --data ./xuqing/VOC_xuqing.yaml  \
---device 0,1,2,3 \
+--device 0,1 \
 --imgsz 640 \
 --rect \
 --epoch 1200 \
---batch-size 40 \
+--batch-size 80 \
 --label-smoothing 0.2 \
 --noautoanchor \
 --patience 0 \
