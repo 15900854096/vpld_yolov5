@@ -10,13 +10,13 @@
 # Train/val/test sets as 1) dir: path/to/imgs, 2) file: path/to/imgs.txt, or 3) list: [path/to/imgs1, path/to/imgs2, ..]
 path: /home/xuqing/vpld_groundtruth_repair/
 train: # train images (relative to 'path')  16551 images
-  - public_Boden
+  - oldrule
   - newrule
+  - background
 val: # val images (relative to 'path')  4952 images
-  - public_Boden
   - newrule
 test: # test images (optional)
-  - longmao/
+  - background
 
 # Classes
 names:

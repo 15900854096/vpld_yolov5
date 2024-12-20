@@ -97,7 +97,6 @@ class MergeDiffSizeBufferConv(nn.Module):
         
         self.backbone8to16 = nn.Sequential(*(self.conv8to16,self.bn8to16,self.act8to16))
         self.backbone32to16 = nn.Sequential(*(self.conv32to16,self.bn32to16,self.act32to16))
-        
     def forward(self, x):
         feat8, feat16, feat32 = x
 
@@ -110,19 +109,14 @@ class MergeDiffSizeBufferConv(nn.Module):
        
 
 class DecoupConv(nn.Module):
-    def __init__(self, c1, c2, clsnum, archornum, k=3, s=1):
+    def __init__(self, c1, c2, clsnum, k=3, s=1):
         super().__init__()
-        assert((c2-clsnum-12)%2==0)
-        self.regAchanel = (int)((c2-clsnum-12)/2-1)
-        self.clsAchanel = 1
-        self.regBchanel = (int)((c2-clsnum-12)/2-1)
-        self.clsBchanel = 1 + clsnum
 
-        self.regCchanel = 5
-        self.clsCchanel = 1
-        self.regDchanel = 5
-        self.clsDchanel = 1
-        
+        xychanel = 2
+        cschanel = 2
+        lenchanel = 1
+        objchanel = 1
+        assert( c2 == ((xychanel+cschanel*2+lenchanel+objchanel)*2+(xychanel+cschanel+lenchanel+objchanel)*2+clsnum) )
         halfchanel = int(c1/2)
         quarterchanel = int(c1/4)
 
@@ -135,30 +129,30 @@ class DecoupConv(nn.Module):
         self.conv_neckD = nn.Sequential(Conv(c1, halfchanel, k, s), Conv(halfchanel, quarterchanel, k, s))
 
 
-        self.conv_Axy = nn.Sequential(Conv(quarterchanel, bpuchanel, k, s), nn.Conv2d(bpuchanel, 2, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
-        self.conv_ADcs = nn.Sequential(Conv(quarterchanel, cpuchanel, k, s), nn.Conv2d(cpuchanel, 2, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
-        self.conv_ABcs =nn.Sequential( Conv(quarterchanel, cpuchanel, k, s), nn.Conv2d(cpuchanel, 2, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
-        self.conv_ABlen =nn.Sequential( Conv(quarterchanel, bpuchanel, k, s), nn.Conv2d(bpuchanel, 1, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
-        self.conv_Aobj = nn.Sequential(Conv(quarterchanel, bpuchanel, k, s), nn.Conv2d(bpuchanel, 1, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
+        self.conv_Axy = nn.Sequential(Conv(quarterchanel, bpuchanel, k, s), nn.Conv2d(bpuchanel, xychanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
+        self.conv_ADcs = nn.Sequential(Conv(quarterchanel, cpuchanel, k, s), nn.Conv2d(cpuchanel, cschanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
+        self.conv_ABcs =nn.Sequential( Conv(quarterchanel, cpuchanel, k, s), nn.Conv2d(cpuchanel, cschanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
+        self.conv_ABlen =nn.Sequential( Conv(quarterchanel, bpuchanel, k, s), nn.Conv2d(bpuchanel, lenchanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
+        self.conv_Aobj = nn.Sequential(Conv(quarterchanel, bpuchanel, k, s), nn.Conv2d(bpuchanel, objchanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
 
         
-        self.conv_Bxy = nn.Sequential(Conv(quarterchanel, bpuchanel, k, s), nn.Conv2d(bpuchanel, 2, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
-        self.conv_BCcs = nn.Sequential(Conv(quarterchanel, cpuchanel, k, s), nn.Conv2d(cpuchanel, 2, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
-        self.conv_BAcs =nn.Sequential( Conv(quarterchanel, cpuchanel, k, s), nn.Conv2d(cpuchanel, 2, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
-        self.conv_BAlen =nn.Sequential( Conv(quarterchanel, bpuchanel, k, s), nn.Conv2d(bpuchanel, 1, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
-        self.conv_Bobj = nn.Sequential(Conv(quarterchanel, bpuchanel, k, s), nn.Conv2d(bpuchanel, 1, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
-        self.conv_Bclass = nn.Sequential(Conv(quarterchanel, bpuchanel, k, s), nn.Conv2d(bpuchanel, 2, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
+        self.conv_Bxy = nn.Sequential(Conv(quarterchanel, bpuchanel, k, s), nn.Conv2d(bpuchanel, xychanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
+        self.conv_BCcs = nn.Sequential(Conv(quarterchanel, cpuchanel, k, s), nn.Conv2d(cpuchanel, cschanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
+        self.conv_BAcs =nn.Sequential( Conv(quarterchanel, cpuchanel, k, s), nn.Conv2d(cpuchanel, cschanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
+        self.conv_BAlen =nn.Sequential( Conv(quarterchanel, bpuchanel, k, s), nn.Conv2d(bpuchanel, lenchanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
+        self.conv_Bobj = nn.Sequential(Conv(quarterchanel, bpuchanel, k, s), nn.Conv2d(bpuchanel, objchanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
+        self.conv_Bclass = nn.Sequential(Conv(quarterchanel, bpuchanel, k, s), nn.Conv2d(bpuchanel, clsnum, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
 
 
-        self.conv_Cxy = nn.Sequential(Conv(quarterchanel, bpuchanel, k, s), nn.Conv2d(bpuchanel, 2, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
-        self.conv_CBcs =nn.Sequential( Conv(quarterchanel, cpuchanel, k, s), nn.Conv2d(cpuchanel, 2, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
-        self.conv_CBlen =nn.Sequential( Conv(quarterchanel, bpuchanel, k, s), nn.Conv2d(bpuchanel, 1, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
-        self.conv_Cobj = nn.Sequential(Conv(quarterchanel, bpuchanel, k, s), nn.Conv2d(bpuchanel, 1, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
+        self.conv_Cxy = nn.Sequential(Conv(quarterchanel, bpuchanel, k, s), nn.Conv2d(bpuchanel, xychanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
+        self.conv_CBcs =nn.Sequential( Conv(quarterchanel, cpuchanel, k, s), nn.Conv2d(cpuchanel, cschanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
+        self.conv_CBlen =nn.Sequential( Conv(quarterchanel, bpuchanel, k, s), nn.Conv2d(bpuchanel, lenchanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
+        self.conv_Cobj = nn.Sequential(Conv(quarterchanel, bpuchanel, k, s), nn.Conv2d(bpuchanel, objchanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
 
-        self.conv_Dxy = nn.Sequential(Conv(quarterchanel, bpuchanel, k, s), nn.Conv2d(bpuchanel, 2, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
-        self.conv_DAcs =nn.Sequential( Conv(quarterchanel, cpuchanel, k, s), nn.Conv2d(cpuchanel, 2, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
-        self.conv_DAlen =nn.Sequential( Conv(quarterchanel, bpuchanel, k, s), nn.Conv2d(bpuchanel, 1, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
-        self.conv_Dobj = nn.Sequential(Conv(quarterchanel, bpuchanel, k, s), nn.Conv2d(bpuchanel, 1, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
+        self.conv_Dxy = nn.Sequential(Conv(quarterchanel, bpuchanel, k, s), nn.Conv2d(bpuchanel, xychanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
+        self.conv_DAcs =nn.Sequential( Conv(quarterchanel, cpuchanel, k, s), nn.Conv2d(cpuchanel, cschanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
+        self.conv_DAlen =nn.Sequential( Conv(quarterchanel, bpuchanel, k, s), nn.Conv2d(bpuchanel, lenchanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
+        self.conv_Dobj = nn.Sequential(Conv(quarterchanel, bpuchanel, k, s), nn.Conv2d(bpuchanel, objchanel, 3, 1, autopad(3), groups=1, dilation=1, bias=True))
 
 
     def forward(self, x):

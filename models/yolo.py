@@ -48,7 +48,7 @@ class Detect(nn.Module):
     def __init__(self, nc=80, anchors=(), ch=(), inplace=True):  # detection layer
         super().__init__()
         self.nc = nc  # number of classes
-        self.no = nc + 16 + 12  # number of outputs per anchor # 16 = Ax Ay Ac1 As1 Ac2 As2 Alen Aobj  Bx By Bc1 Bs1  Bc2 Bs2 Blen Bobj cls1 cls2
+        self.no = ch[0]  # number of outputs per anchor # 16 = Ax Ay Ac1 As1 Ac2 As2 Alen Aobj  Bx By Bc1 Bs1  Bc2 Bs2 Blen Bobj cls1 cls2
         self.nl = len(anchors)  # number of detection layers
         self.na = len(anchors[0])  #len(anchors[0]) // 2  # number of anchors only length hase anchor
         self.grid = [torch.empty(0) for _ in range(self.nl)]  # init grid
@@ -56,8 +56,8 @@ class Detect(nn.Module):
         self.register_buffer('anchors', torch.tensor(anchors).float().view(self.nl, -1, 1)) #view(self.nl, -1, 2)  # shape(nl,na,2)
         #self.m = nn.ModuleList(nn.Conv2d(x, self.no * self.na, 1) for x in ch)  # output conv
 
-        self.m_pre = MergeDiffSizeBufferConv(ch)
-        self.m    = DecoupConv(ch[-2], self.no, self.nc , self.na, 3)
+        #self.m_pre = MergeDiffSizeBufferConv(ch)
+        #self.m    = DecoupConv(ch[-2], self.nc , self.na, 3)
         
         self.inplace = inplace  # use inplace ops (e.g. slice assignment)
 
@@ -65,10 +65,9 @@ class Detect(nn.Module):
         z = []  # inference output
         output=[0]
         if self.export:
-            return self.m(self.m_pre(x))
+            return x
         for i in range(self.nl):
-            output[i] = self.m_pre(x)
-            output[i] = self.m(output[i])  # conv
+            output[i] = x
             bs, _, ny, nx = output[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
            
             output[i] = output[i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
@@ -369,7 +368,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
     no = na * (nc + 16)  # number of outputs = anchors * (classes + 16) x1 y1 c1 s1 c2 s2 len1 obj1 x2 y2 c1 s1 c2 s2 len2 obj2
 
     layers, save, c2 = [], [], ch[-1]  # layers, savelist, ch out
-    for i, (f, n, m, args) in enumerate(d['backbone'] + d['head']):  # from, number, module, args
+    for i, (f, n, m, args) in enumerate(d['backbone'] + d['head']):  # from, number, module, args(配置文件的参数，要处理一下，变成网络构造函数需要的参数)
         m = eval(m) if isinstance(m, str) else m  # eval strings
         for j, a in enumerate(args):
             with contextlib.suppress(NameError):
@@ -392,11 +391,23 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         elif m is Concat:
             c2 = sum(ch[x] for x in f)
         # TODO: channel, gw, gd
-        elif m in {Detect, Segment}:
-            args.append([ch[x] for x in f])
-            if isinstance(args[1], int):  # number of anchors
-                args[1] = [list(range(args[1] * 2))] * len(f)
+        elif m is MergeDiffSizeBufferConv:
+            tempch = [ch[x] for x in f] #从from里面拿到他们的输出通道数，后面需要作为这里的输入通道数[128,256，512]
+            _, c2, _ = tempch #代表网络输出通道数 输入通道数中间的那个是需要作为输出通道数的，即256
+            args.append(tempch) #代表构造函数需要的形参 args起初为空list,现在里面放入了输入通道数[128,256，512]
+        elif m is DecoupConv:
+            c1, numclass = ch[f], args[0] #ch[f]上一层的输出通道数，即256
+            c2 = numclass + 8 + 8 + 6 + 6 #这一层的输出通道数
+            args = [c1, c2, numclass] #代表构造函数需要的形参，即输入通道数256和numclass
+        elif m in {Segment, Detect}:
+            if m is Detect:
+                args.append([ch[f]]) #[nc, anchors]再加一个上一层的输出通道数30，即为[nc, anchors, 30]
+                if isinstance(args[1], int):  # number of anchors
+                    args[1] = [list(range(args[1] * 2))] * len(f)
             if m is Segment:
+                args.append([ch[x] for x in f])
+                if isinstance(args[1], int):  # number of anchors
+                    args[1] = [list(range(args[1] * 2))] * len(f)
                 args[3] = make_divisible(args[3] * gw, 16)
         elif m is Contract:
             c2 = ch[f] * args[0] ** 2
@@ -414,7 +425,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         layers.append(m_)
         if i == 0:
             ch = []
-        ch.append(c2)
+        ch.append(c2) #感觉这里面更加合适的应该算是存放得输出通道数
     return nn.Sequential(*layers), sorted(save)
 
 
