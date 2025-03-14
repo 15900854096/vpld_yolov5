@@ -145,6 +145,57 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         model = Model(cfg, ch=3, nc=nc, anchors=hyp.get('anchors')).to(device)  # create
     amp = check_amp(model)  # check AMP
     #sys.exit()
+    
+    # namelist=["model.25.conv_neckC.0.conv.weight",
+    #              "model.25.conv_neckC.1.conv.weight",
+    #              "model.25.conv_Cxy.0.conv.weight",
+    #              "model.25.conv_CBcs.0.conv.weight",
+    #              "model.25.conv_CBlen.0.conv.weight",
+    #              "model.25.conv_Cobj.0.conv.weight",
+    #              "model.25.conv_Cxy.1.weight",
+    #              "model.25.conv_CBcs.1.weight",
+    #              "model.25.conv_CBlen.1.weight",
+    #              "model.25.conv_Cobj.1.weight",
+
+    #              "model.25.conv_neckD.0.conv.weight",
+    #              "model.25.conv_neckD.1.conv.weight",
+    #              "model.25.conv_Dxy.0.conv.weight",
+    #              "model.25.conv_DAcs.0.conv.weight",
+    #              "model.25.conv_DAlen.0.conv.weight",
+    #              "model.25.conv_Dobj.0.conv.weight",
+    #              "model.25.conv_Dxy.1.weight",
+    #              "model.25.conv_DAcs.1.weight",
+    #              "model.25.conv_DAlen.1.weight",
+    #              "model.25.conv_Dobj.1.weight",
+
+    #              "model.25.conv_neckC.0.conv.bias",
+    #              "model.25.conv_neckC.1.conv.bias",
+    #              "model.25.conv_Cxy.0.conv.bias",
+    #              "model.25.conv_CBcs.0.conv.bias",
+    #              "model.25.conv_CBlen.0.conv.bias",
+    #              "model.25.conv_Cobj.0.conv.bias",
+    #              "model.25.conv_Cxy.1.bias",
+    #              "model.25.conv_CBcs.1.bias",
+    #              "model.25.conv_CBlen.1.bias",
+    #              "model.25.conv_Cobj.1.bias",
+
+    #              "model.25.conv_neckD.0.conv.bias",
+    #              "model.25.conv_neckD.1.conv.bias",
+    #              "model.25.conv_Dxy.0.conv.bias",
+    #              "model.25.conv_DAcs.0.conv.bias",
+    #              "model.25.conv_DAlen.0.conv.bias",
+    #              "model.25.conv_Dobj.0.conv.bias",
+    #              "model.25.conv_Dxy.1.bias",
+    #              "model.25.conv_DAcs.1.bias",
+    #              "model.25.conv_DAlen.1.bias",
+    #              "model.25.conv_Dobj.1.bias",
+    #              ]
+    # for k, v in model.named_parameters():
+    #     with torch.no_grad():
+    #         if(k in namelist):
+    #             v += (torch.rand(v.shape, device=v.device)*2-1)/10
+    #             print("random ok ", k, v.shape,v.device)
+    
     # Freeze
     freeze = [f'model.{x}.' for x in (freeze if len(freeze) > 1 else range(freeze[0]))]  # layers to freeze  (freeze if len(freeze) > 1 else range(freeze[0]))必须是一个list
     for k, v in model.named_parameters():
@@ -259,7 +310,6 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     print("model.class_weights: ", model.class_weights)
     model.names = names
     print("model.names: ", model.names)
-    
     # Start training
     t0 = time.time()
     nb = len(train_loader)  # number of batches
@@ -277,6 +327,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 f'Using {train_loader.num_workers * WORLD_SIZE} dataloader workers\n'
                 f"Logging results to {colorstr('bold', save_dir)}\n"
                 f'Starting training for {epochs} epochs...')
+
     for epoch in range(start_epoch, epochs):  # epoch ------------------------------------------------------------------
         callbacks.run('on_train_epoch_start')
         model.train()
@@ -426,7 +477,19 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             log_vals = list(mloss) + list(results) + lr
             callbacks.run('on_fit_epoch_end', log_vals, epoch, best_fitness, fi)
 
-            if ((epoch == 0) or (epoch % 50 == 0)):
+            if ((epoch == 0) or (epoch == 5) or (epoch % 50 == 0) or (epoch == epochs-1)):
+                # for k, v in model.named_parameters():
+                #     if(k=="module.model.23.cv3.conv.weight"):
+                #         print(k,v.cpu().detach().numpy().reshape(-1)[0:10])
+                #     if(k=="module.model.23.cv3.conv.bias"):
+                #         print(k,v.cpu().detach().numpy().reshape(-1)[0:10])
+                #     if(k=="module.model.25.conv_neckB.0.conv.weight"):
+                #         print(k,v.cpu().detach().numpy().reshape(-1)[0:10])
+                #     if(k=="module.model.25.conv_neckB.0.conv.bias"):
+                #         print(k,v.cpu().detach().numpy().reshape(-1)[0:10])
+                #     if(k=="module.model.25.conv_neckC.0.conv.weight"):
+                #         print(k,v.cpu().detach().numpy().reshape(-1)[0:10])
+
                 ckpt = {'epoch': epoch,'best_fitness': best_fitness,'model': deepcopy(de_parallel(model)).half(),'ema': deepcopy(ema.ema).half(),'updates': ema.updates,'optimizer': optimizer.state_dict(),'opt': vars(opt),'git': GIT_INFO,'date': datetime.now().isoformat()}
                 print("#######################   ", epoch, ":", loss)
                 torch.save(ckpt, w / ('last_%d.pt'%epoch))

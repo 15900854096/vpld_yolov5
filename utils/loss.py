@@ -273,10 +273,11 @@ class ComputeLoss:
                 #所泊库位与其他库位重要性不一样，需要有所平衡，通过Aitst调节
                 #CD角点的位置由于水平和垂直的缘故，重要性也不一样，通过BweightstheAD来调节
                 #AB角点位置不论水平还是垂直，都很重要
-                lossxyABCD  = torch.sum(self.MSEnone(Apbox[:,0:2], Atbox[i][:,0:2]) * Aitst) / (nA*2) \
-                            + torch.sum(self.MSEnone(Bpbox[:,0:2], Btbox[i][:,0:2]) * Bitst) / (nB*2) \
-                            + torch.sum(self.MSEnone(Cpbox[:,0:2], Ctbox[i][:,0:2]) * Citst * BweightstheAD) / (nC*2) \
-                            + torch.sum(self.MSEnone(Dpbox[:,0:2], Dtbox[i][:,0:2]) * Ditst * AweightstheAD) / (nD*2) 
+                lossxyA = torch.sum(self.MSEnone(Apbox[:,0:2], Atbox[i][:,0:2]) * Aitst) / (nA*2)
+                lossxyB = torch.sum(self.MSEnone(Bpbox[:,0:2], Btbox[i][:,0:2]) * Bitst) / (nB*2)
+                lossxyC = torch.sum(self.MSEnone(Cpbox[:,0:2], Ctbox[i][:,0:2]) * Citst * BweightstheAD) / (nC*2)
+                lossxyD = torch.sum(self.MSEnone(Dpbox[:,0:2], Dtbox[i][:,0:2]) * Ditst * AweightstheAD) / (nD*2)
+                lossxyABCD  = lossxyA + lossxyB + lossxyC + lossxyD
                             
 
                 # if 0: #cos 和 sin 是否先归一化

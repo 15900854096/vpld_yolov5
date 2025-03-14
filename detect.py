@@ -179,7 +179,7 @@ def run(
                     cpoint1 = (round(float(cx)) , round(float(cy)))
                     cpoint2 = (round(float(cx+cleng*cc)) , round(float(cy+cleng*cs)))
                     cv2.circle(im0, cpoint1, 1, (0,0,255), 4)
-                    cv2.arrowedLine(im0, cpoint1, cpoint2, (255,0,0), 1, 4)
+                    #cv2.arrowedLine(im0, cpoint1, cpoint2, (255,0,0), 1, 4)
 
             if len(det):
                 # Rescale boxes from img_size to im0 size
