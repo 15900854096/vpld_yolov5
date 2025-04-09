@@ -6,6 +6,7 @@ Image augmentation functions
 import math
 import random
 import time
+import copy
 
 import cv2
 import numpy as np
@@ -420,6 +421,39 @@ def gt_fliplr(t):
     p3[:,0]=1-p3[:,0]
     t=np.concatenate([c,p1,p0,p3,p2],axis=1)
     return t
+
+def gt_rotate90degree(t, direction):
+    c,p0,p1,p2,p3 =  np.split(t , [1, 3, 5, 7], axis=1)
+    if (cv2.ROTATE_90_CLOCKWISE==direction):
+        temx, temy = 1-p0[:,1], p0[:,0]
+        p0[:,0], p0[:,1] = copy.deepcopy(temx), copy.deepcopy(temy)
+        
+        temx, temy =  1-p1[:,1], p1[:,0]
+        p1[:,0], p1[:,1] = copy.deepcopy(temx), copy.deepcopy(temy)
+
+        temx, temy =  1-p2[:,1], p2[:,0]
+        p2[:,0], p2[:,1] = copy.deepcopy(temx), copy.deepcopy(temy)
+
+        temx, temy =  1-p3[:,1], p3[:,0]
+        p3[:,0], p3[:,1] = copy.deepcopy(temx), copy.deepcopy(temy)
+    elif(cv2.ROTATE_90_COUNTERCLOCKWISE==direction):
+        temx, temy = p0[:,1], 1-p0[:,0]
+        p0[:,0], p0[:,1] = copy.deepcopy(temx), copy.deepcopy(temy)
+        
+        temx, temy = p1[:,1], 1-p1[:,0]
+        p1[:,0], p1[:,1] = copy.deepcopy(temx), copy.deepcopy(temy)
+
+        temx, temy = p2[:,1], 1-p2[:,0]
+        p2[:,0], p2[:,1] = copy.deepcopy(temx), copy.deepcopy(temy)
+
+        temx, temy = p3[:,1], 1-p3[:,0]
+        p3[:,0], p3[:,1] = copy.deepcopy(temx), copy.deepcopy(temy)
+    else:
+        print("direction error")
+        sys.exit()
+    t=np.concatenate([c,p0,p1,p2,p3],axis=1)
+    return t
+
 
 def gt_rotate(t,oW,oH,nW, nH,M):
     c,p0,p1,p2,p3 =  np.split(t , [1, 3, 5, 7], axis=1)

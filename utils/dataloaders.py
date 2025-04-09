@@ -38,7 +38,7 @@ from utils.general import (DATASETS_DIR, LOGGER, NUM_THREADS, TQDM_BAR_FORMAT, c
 from utils.torch_utils import torch_distributed_zero_first
 
 
-from utils.augmentations import gt_flipud,gt_fliplr,gt_rotate,rotate_bound,image_gt_data_resize_all,cutblock
+from utils.augmentations import gt_flipud,gt_fliplr,gt_rotate90degree,gt_rotate,rotate_bound,image_gt_data_resize_all,cutblock
 
 # Parameters
 HELP_URL = 'See https://docs.ultralytics.com/yolov5/tutorials/train_custom_data'
@@ -719,25 +719,30 @@ class LoadImagesAndLabels(Dataset):
         temp_labels[:, 1:] *= self.img_size
 
         fliter_lot_idx=[]
-        boarder_first  = 15
+        boarder_first  = 20
         boarder_second = 30
+        AD_BC_min_length = 20
         for idx,lot in enumerate(temp_labels):
             Ax,Ay,Bx,By,Cx,Cy,Dx,Dy=lot[1],lot[2],lot[3],lot[4],lot[5],lot[6],lot[7],lot[8]
             # if(Cx>self.img_size or Cy>self.img_size or Dx>self.img_size or Dy>self.img_size):
             #     print(self.im_files[index])
             #     print(Ax,Ay,Bx,By,Cx,Cy,Dx,Dy)
 
+            AD_length = math.sqrt(math.pow(Ax-Dx,2)+math.pow(Ay-Dy,2))
+            BC_length = math.sqrt(math.pow(Bx-Cx,2)+math.pow(By-Cy,2))
             direction_angle = math.atan2(Cy-Ay, Cx-Ax)
-            direction_leng = min(math.sqrt(math.pow(Ax-Dx,2)+math.pow(Ay-Dy,2)) , math.sqrt(math.pow(Bx-Cx,2)+math.pow(By-Cy,2)))
+            direction_leng = min( AD_length, BC_length)
             if(Ax<boarder_first or Ax>self.img_size-boarder_first or
                Ay<boarder_first or Ay>self.img_size-boarder_first or
                Bx<boarder_first or Bx>self.img_size-boarder_first or
                By<boarder_first or By>self.img_size-boarder_first): #位于第一边界
                 continue
-            elif(Ax<boarder_second or Ax>self.img_size-boarder_second or
-               Ay<boarder_second or Ay>self.img_size-boarder_second or
-               Bx<boarder_second or Bx>self.img_size-boarder_second or
-               By<boarder_second or By>self.img_size-boarder_second) and (direction_leng<30): #位于第二边界并且长度很短
+            # elif(Ax<boarder_second or Ax>self.img_size-boarder_second or
+            #    Ay<boarder_second or Ay>self.img_size-boarder_second or
+            #    Bx<boarder_second or Bx>self.img_size-boarder_second or
+            #    By<boarder_second or By>self.img_size-boarder_second) and (direction_leng<30): #位于第二边界并且长度很短
+            #     continue
+            elif(AD_length<AD_BC_min_length or BC_length<AD_BC_min_length):
                 continue
             fliter_lot_idx.append(idx)
         labels = labels[fliter_lot_idx]
@@ -790,6 +795,15 @@ class LoadImagesAndLabels(Dataset):
                 if nl:
                     labels = gt_fliplr(labels) #labels[:, 1] = 1 - labels[:, 1]
             
+            if random.random() < hyp['rotate90degree']:
+                if random.random()<0.5:
+                    dirc = cv2.ROTATE_90_CLOCKWISE
+                else:
+                    dirc = cv2.ROTATE_90_COUNTERCLOCKWISE
+                img = cv2.rotate(img, dirc)
+                labels = gt_rotate90degree(labels,dirc)
+
+
             if random.random() < hyp['rotate']:
                 h,w,c = img.shape
                 ang = random.randint(-20, +20)
