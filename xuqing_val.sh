@@ -1,9 +1,9 @@
 python ./val.py \
---weights ./runs/train/exp5/weights/last_900.pt \
+--weights ./runs/train/20250503newrule/weights/last_1199.pt  \
 --data ./xuqing/VOC_xuqing.yaml \
---device 4,5,6,7 \
+--device 7 \
 --imgsz 640 \
---batch-size 40 \
+--batch-size 35 \
 --conf-thres 0.9 \
 --iou-thres 0.2 \
 --half \

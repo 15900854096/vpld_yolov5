@@ -31,6 +31,8 @@ from tqdm import tqdm
 import re
 from shapely.geometry import Polygon, MultiPoint
 import copy 
+import shapely
+from math import cos, sin, atan2
 
 from utils.augmentations import (Albumentations, augment_hsv, classify_albumentations, classify_transforms, copy_paste,
                                  letterbox, mixup, random_perspective, rain, sunlight, AddGaussianNoise, AddPepperSaltNoise)
@@ -53,6 +55,13 @@ VID_FORMATS = 'asf', 'avi', 'gif', 'm4v', 'mkv', 'mov', 'mp4', 'mpeg', 'mpg', 't
 LOCAL_RANK = int(os.getenv('LOCAL_RANK', -1))  # https://pytorch.org/docs/stable/elastic/run.html
 RANK = int(os.getenv('RANK', -1))
 PIN_MEMORY = str(os.getenv('PIN_MEMORY', True)).lower() == 'true'  # global pin_memory for dataloaders
+
+#already batchnorm
+front_camera = shapely.geometry.Point(320/640.0, 206/640.0)
+rear_camera = shapely.geometry.Point( 321/640.0, 438/640.0)
+left_camera = shapely.geometry.Point( 268/640.0, 288/640.0)
+right_camera = shapely.geometry.Point(374/640.0, 290/640.0)
+pixel2m = 0.02 #一个像素对应0.02m,即2cm
 
 # Get orientation exif tag
 for orientation in ExifTags.TAGS.keys():
@@ -676,6 +685,19 @@ class LoadImagesAndLabels(Dataset):
     #     #self.shuffled_vector = np.random.permutation(self.nF) if self.augment else np.arange(self.nF)
     #     return self
 
+    def angleOfXaxis(x1, y1, x2, y2, x3, y3, x4, y4):
+        # (x1-x2, y1-y2)
+        # (x3-x4, y3-y4)
+        x=((x1-x2)*(x1-x2))+((y1-y2)*(y1-y2))
+        y=((x3-x4)*(x3-x4))+((y3-y4)*(y3-y4))
+        s1=math.sqrt(x)
+        s2=math.sqrt(y)
+        s3=((x2-x1)*(x4-x3))+((y2-y1)*(y4-y3))
+        s4=abs(s3)
+        ans2=s4/(s1*s2)
+        ans=math.acos(ans2)
+        return (180*ans)/3.1415926
+
     def __getitem__(self, index):
         #function_start_t = perf_counter_ns()
         index = self.indices[index]  # linear, shuffled, or image_weights
@@ -719,8 +741,11 @@ class LoadImagesAndLabels(Dataset):
                                                  perspective=hyp['perspective'])
             '''
 
-        
-        
+        #Restore to the original size
+        t_front_camera = shapely.geometry.Point(front_camera.x * self.img_size, front_camera.y * self.img_size)
+        t_rear_camera = shapely.geometry.Point(  rear_camera.x * self.img_size,  rear_camera.y * self.img_size)
+        t_left_camera = shapely.geometry.Point(  left_camera.x * self.img_size,  left_camera.y * self.img_size)
+        t_right_camera = shapely.geometry.Point(right_camera.x * self.img_size, right_camera.y * self.img_size)
         
         
         
@@ -753,6 +778,30 @@ class LoadImagesAndLabels(Dataset):
             #     continue
             elif(AD_length<AD_BC_min_length or BC_length<AD_BC_min_length):
                 continue
+            
+            if 0:
+                thetaDA = math.atan2(Ay-Dy, Ax-Dx)
+                thetaCB = math.atan2(By-Cy, Bx-Cx)
+                outside_len = 2 / pixel2m
+                inside_len = -5 / pixel2m
+                outside_A = [Ax + outside_len * cos(thetaDA), Ay + outside_len * sin(thetaDA)]
+                inside_A =  [Ax +  inside_len * cos(thetaDA), Ay +  inside_len * sin(thetaDA)]
+
+                outside_B = [Bx + outside_len * cos(thetaCB), By + outside_len * sin(thetaCB)]
+                inside_B =  [Bx +  inside_len * cos(thetaCB), By +  inside_len * sin(thetaCB)]
+                poly_context = {'type': 'MULTIPOLYGON', 'coordinates': [[[outside_A, outside_B, inside_B, inside_A]]]}
+                poly_shape = shapely.geometry.asShape(poly_context)
+
+                if(
+                    poly_shape.intersects(t_front_camera) 
+                or poly_shape.intersects(t_rear_camera) 
+                or poly_shape.intersects(t_left_camera) 
+                or poly_shape.intersects(t_right_camera)
+                ):
+                    labels[idx,0] = 2
+                else:
+                    labels[idx,0] = 1
+
             fliter_lot_idx.append(idx)
         labels = labels[fliter_lot_idx]
         

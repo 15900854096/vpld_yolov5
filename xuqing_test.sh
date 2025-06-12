@@ -1,5 +1,5 @@
 python ./detect.py \
---weights ./runs/train/exp4/weights/last_450.pt \
+--weights ./runs/train/20250425newrule/weights/last_1199.pt \
 --source /home/xuqing/ori \
 --data ./xuqing/VOC_xuqing.yaml \
 --device 3 \
