@@ -44,8 +44,8 @@ from utils.downloads import curl_download, gsutil_getsize
 from utils.metrics import box_iou, fitness, bbox_iou_eval #bbox_iou_eval平行四边形求IOU
 
 base_image_size = 640
-default_vlot_depth = 200 / base_image_size
-default_hlot_depth = 50 / base_image_size
+default_vlot_depth = 240 / base_image_size
+default_hlot_depth = 120 / base_image_size
 default_hlot_min_width = 200 /base_image_size
 
 FILE = Path(__file__).resolve()

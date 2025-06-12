@@ -16,7 +16,7 @@ val: # val images (relative to 'path')  4952 images
   - oldrule/longmao/917_1310_shanghai_alizhongxin_16879_ok
   - oldrule/public_ps2.0
 test: # test images (optional)
-  - 
+  - background
 
 # Classes
 names:

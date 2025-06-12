@@ -4,7 +4,9 @@ import numpy as np
 import sys
 
 
-point_color = (0, 255, 0)  # BGR
+point_color = [(0, 255, 0), #绿色
+               (0, 0, 255), #红色
+               (255, 0, 0)] #蓝色 BGR
 thickness = 1
 lineType = 8
 
@@ -16,8 +18,8 @@ def draw_save(img,labels,address):
         p1 = (round(float(ele[1]*w)) , round(float(ele[2]*h)))
         p2 = (round(float(ele[3]*w)) , round(float(ele[4]*h)))
         p3 = (round(float(ele[5]*w)) , round(float(ele[6]*h)))
-        cv.arrowedLine(img_, p1, p2, point_color, thickness, lineType)
-        cv.arrowedLine(img_, p2, p3, point_color, thickness, lineType)   
+        cv.arrowedLine(img_, p1, p2, point_color[int(ele[0])], thickness, lineType)
+        cv.arrowedLine(img_, p2, p3, point_color[int(ele[0])], thickness, lineType)   
     cv2.imwrite(address, img_)
     print("save img to ",address)
     
