@@ -29,6 +29,8 @@ from PIL import ExifTags, Image, ImageOps
 from torch.utils.data import DataLoader, Dataset, dataloader, distributed
 from tqdm import tqdm
 import re
+from shapely.geometry import Polygon, MultiPoint
+import copy 
 
 from utils.augmentations import (Albumentations, augment_hsv, classify_albumentations, classify_transforms, copy_paste,
                                  letterbox, mixup, random_perspective, rain, sunlight, AddGaussianNoise, AddPepperSaltNoise)
@@ -39,6 +41,10 @@ from utils.torch_utils import torch_distributed_zero_first
 
 
 from utils.augmentations import gt_flipud,gt_fliplr,gt_rotate90degree,gt_rotate,rotate_bound,image_gt_data_resize_all,cutblock
+
+from utils.general import default_vlot_depth, default_hlot_depth, default_hlot_min_width, base_image_size, PI
+
+from utils.metrics import bbox_iou_cat_in_lot
 
 # Parameters
 HELP_URL = 'See https://docs.ultralytics.com/yolov5/tutorials/train_custom_data'
@@ -599,6 +605,9 @@ class LoadImagesAndLabels(Dataset):
                 pbar.desc = f'{prefix}Caching images ({b / gb:.1f}GB {cache_images})'
             pbar.close()
 
+        self.polycar = np.array([270/640.0, 193/640.0, 370/640.0, 193/640.0, 370/640.0, 445/640.0, 270/640.0, 445/640.0]).reshape(4, 2)  # 四边形二维坐标表示
+        self.polycar = Polygon(self.polycar).convex_hull
+
         self.cnt=0
         self.dataloadtime=0
         self.dataloadtime1=0
@@ -746,6 +755,26 @@ class LoadImagesAndLabels(Dataset):
                 continue
             fliter_lot_idx.append(idx)
         labels = labels[fliter_lot_idx]
+        
+        if 1:
+            temp_labels = torch.tensor(copy.deepcopy(labels))
+            if(temp_labels.shape[0]>0):
+                lengGt = torch.full((temp_labels.shape[0] ,1), default_vlot_depth)
+                widthGt = torch.sqrt((temp_labels[:,1] - temp_labels[:,3])**2+(temp_labels[:,2] - temp_labels[:,4])**2)
+                hlotGT_idx = torch.tensor(range(temp_labels.shape[0]))[widthGt > (1.0*default_hlot_min_width)]
+                lengGt[hlotGT_idx,0:1] = default_hlot_depth
+                thetaBC = torch.atan2(temp_labels[:,6:7] - temp_labels[:,4:5],temp_labels[:,5:6] - temp_labels[:,3:4])
+                thetaAD = torch.atan2(temp_labels[:,8:9] - temp_labels[:,2:3],temp_labels[:,7:8] - temp_labels[:,1:2])
+                
+                temp_labels[:,5:6] = torch.cos(thetaBC)*lengGt + temp_labels[:,3:4]
+                temp_labels[:,6:7] = torch.sin(thetaBC)*lengGt + temp_labels[:,4:5]
+                
+                temp_labels[:,7:8] = torch.cos(thetaAD)*lengGt + temp_labels[:,1:2]
+                temp_labels[:,8:9] = torch.sin(thetaAD)*lengGt + temp_labels[:,2:3]
+                
+                m = map(lambda lot : bbox_iou_cat_in_lot(self.polycar, Polygon(lot[1:].reshape(4,2)).convex_hull ), temp_labels.cpu() )
+                m = np.array(list(m))
+                labels[m>0.2][0:1] = 0
         
         # if(len(fliter_lot_idx) != len(temp_labels)) :
         #     print("self.im_files[index]: ", self.im_files[index])
