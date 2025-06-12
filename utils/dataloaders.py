@@ -823,7 +823,7 @@ class LoadImagesAndLabels(Dataset):
                 
                 m = map(lambda lot : bbox_iou_cat_in_lot(self.polycar, Polygon(lot[1:].reshape(4,2)).convex_hull ), temp_labels.cpu() )
                 m = np.array(list(m))
-                labels[m>0.2][0:1] = 0
+                labels[m>0.1,0:1] = 0
         
         # if(len(fliter_lot_idx) != len(temp_labels)) :
         #     print("self.im_files[index]: ", self.im_files[index])
