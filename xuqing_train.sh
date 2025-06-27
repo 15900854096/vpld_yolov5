@@ -3,7 +3,7 @@ python train.py  \
 --weights xuqing/yolov5s.pt \
 --cfg ./xuqing/yolov5s_xuqing.yaml  \
 --data ./xuqing/VOC_xuqing.yaml  \
---device 4,5,6,7 \
+--device 0,1,2,3,4,5,6,7 \
 --imgsz 640 \
 --rect \
 --epoch 900 \
@@ -12,7 +12,7 @@ python train.py  \
 --noautoanchor \
 --patience 0 \
 --cache  disk \
---workers 16 \
+--workers 32 \
 --sync-bn \
 #--resume
 
