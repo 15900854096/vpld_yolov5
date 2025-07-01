@@ -1,6 +1,7 @@
 #sleep 7h
 python train.py  \
 --weights xuqing/yolov5s.pt \
+--name 20250620searching \
 --cfg ./xuqing/yolov5s_xuqing.yaml  \
 --data ./xuqing/VOC_xuqing.yaml  \
 --device 0,1,2,3,4,5,6,7 \

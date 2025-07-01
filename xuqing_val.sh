@@ -1,5 +1,5 @@
 python ./val.py \
---weights ./runs/train/20250106/weights/best.pt \
+--weights ./runs/train/20250620searching/weights/best.pt \
 --data ./xuqing/VOC_xuqing.yaml \
 --device 0,1,2,3 \
 --imgsz 640 \
