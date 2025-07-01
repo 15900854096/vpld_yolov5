@@ -779,7 +779,7 @@ class LoadImagesAndLabels(Dataset):
             elif(AD_length<AD_BC_min_length or BC_length<AD_BC_min_length):
                 continue
             
-            if 0:
+            if 0: #摄像头正对着的库位, 对于他们的loss, 要更优先考虑降低, 因为此时他们看的最清楚
                 thetaDA = math.atan2(Ay-Dy, Ax-Dx)
                 thetaCB = math.atan2(By-Cy, Bx-Cx)
                 outside_len = 2 / pixel2m
@@ -805,7 +805,7 @@ class LoadImagesAndLabels(Dataset):
             fliter_lot_idx.append(idx)
         labels = labels[fliter_lot_idx]
         
-        if 1:
+        if 0:#强行对GT的标签做了修改，如果库位被自车占用了(自车10%的面积在库位内), 那么这个库位的标签强行设置为free, 即可泊库位
             temp_labels = torch.tensor(copy.deepcopy(labels))
             if(temp_labels.shape[0]>0):
                 lengGt = torch.full((temp_labels.shape[0] ,1), default_vlot_depth)
