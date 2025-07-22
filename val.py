@@ -29,6 +29,7 @@ import yaml
 import numpy as np
 import torch
 from tqdm import tqdm
+from copy import deepcopy
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # YOLOv5 root directory
@@ -42,7 +43,7 @@ from utils.dataloaders import create_dataloader
 from utils.general import (LOGGER, TQDM_BAR_FORMAT, Profile, check_dataset, check_img_size, check_requirements,
                            check_yaml, coco80_to_coco91_class, colorstr, increment_path, non_max_suppression,
                            print_args, scale_boxes, xywh2xyxy, xyxy2xywh, default_vlot_depth, default_hlot_depth, default_hlot_min_width)
-from utils.metrics import ConfusionMatrix, ap_per_class, box_iou, box_iou_poly, Cal_R_Matrix
+from utils.metrics import ConfusionMatrix, ap_per_class, box_iou, box_iou_poly, Cal_R_Matrix, Cal_ABCD_Matrix
 from utils.plots import output_to_target, plot_images, plot_val_study
 from utils.torch_utils import select_device, smart_inference_mode
 
@@ -208,6 +209,8 @@ def run(
     pbar = tqdm(dataloader, desc=s, bar_format=TQDM_BAR_FORMAT)  # progress bar
     crm = Cal_R_Matrix(imgsz,device)
     crm.reset()
+    crm1 = Cal_ABCD_Matrix(imgsz,device)
+    crm1.reset()
     for batch_i, (im, targets, paths, shapes) in enumerate(pbar):
         callbacks.run('on_val_batch_start')
         with dt[0]:
@@ -240,7 +243,9 @@ def run(
                                         labels=lb,
                                         multi_label=True,
                                         agnostic=single_cls,
-                                        max_det=max_det)["vpld"]
+                                        max_det=max_det)
+            abcd_pre_trainshape = deepcopy(preds)
+            preds = preds["vpld"]
             
             # 0 1  2   3  4  5   6   7   8   9   10
             # x y len c1 s1 ADc ADs BCc BCs conf cls x&y:base_640  others:normal 1
@@ -249,6 +254,7 @@ def run(
             ori_shape = shapes[si][0]
             ipt_shape = shapes[si][1]
             labels = targets[targets[:, 0] == si, 1:][:,:9] #lebels: label x1 y1 x2 y2 x3 y3 x4 y4  all is BatchNorm_1
+            abcd_gt_batchnorm1 = deepcopy(labels[:,1:])
             labels[:, 1:] *= torch.tensor((ori_shape[0], ori_shape[0], ori_shape[0], ori_shape[0], ori_shape[0], ori_shape[0], ori_shape[0], ori_shape[0]), device=device)#lebels: label x1 y1 x2 y2 x3 y3 x4 y4  all is base_ori
             nl, npr = labels.shape[0], pred.shape[0]  # number of labels, predictions
             path = Path(paths[si])
@@ -327,6 +333,7 @@ def run(
                 #labelsn: label x1 y1 x2 y2 x3 y3 x4 y4 base_ori&depth_ok
                 correct = process_batch(predn, labelsn, iouv)
                 crm.update(predn, labelsn, ori_shape[0])
+                crm1.update(abcd_gt_batchnorm1, abcd_pre_trainshape, si, ori_shape[0])
                 # if(sum(lengGt[hlotGT_idx,0:1])>1):
                 #     print("predn: ",predn)
                 #     print("labelsn :",labelsn)
@@ -354,6 +361,7 @@ def run(
         callbacks.run('on_val_batch_end', batch_i, im, targets, paths, shapes, preds)
     print("loss:",(loss.cpu() / len(dataloader)).tolist())
     crm.get_result()
+    crm1.get_result()
     # Compute metrics
     stats = [torch.cat(x, 0).cpu().numpy() for x in zip(*stats)]  # to numpy
     if len(stats) and stats[0].any():

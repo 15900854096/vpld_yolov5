@@ -520,3 +520,95 @@ class Cal_R_Matrix:
             print("parking AD_theta_err: ", torch.mean(torch.abs(torch.tensor(AD_theta_err[search_park==flag]))), torch.mean(torch.pow(torch.tensor(AD_theta_err[search_park==flag]),2)))
             print("parking BC_theta_err: ", torch.mean(torch.abs(torch.tensor(BC_theta_err[search_park==flag]))), torch.mean(torch.pow(torch.tensor(BC_theta_err[search_park==flag]),2)))
             print("\n")
+            
+            
+            
+class Cal_ABCD_Matrix:
+    def __init__(self,imgsz,device):
+        self.device = device
+        self.A_x_err = []
+        self.A_y_err = []
+        self.B_x_err = []
+        self.B_y_err = []
+        self.C_x_err = []
+        self.C_y_err = []
+        self.D_x_err = []
+        self.D_y_err = []
+        self.A_dis_err = []
+        self.B_dis_err = []
+        self.C_dis_err = []
+        self.D_dis_err = []
+        self.imgsz = imgsz
+
+    def reset(self):
+        self.A_x_err = []
+        self.A_y_err = []
+        self.B_x_err = []
+        self.B_y_err = []
+        self.C_x_err = []
+        self.C_y_err = []
+        self.D_x_err = []
+        self.D_y_err = []
+        self.A_dis_err = []
+        self.B_dis_err = []
+        self.C_dis_err = []
+        self.D_dis_err = []
+
+    def distance(self, pt1, pt2):
+        res =  math.sqrt( math.pow(pt1[0]-pt2[0],2) + math.pow(pt1[1]-pt2[1],2) )
+        return res
+        
+    def update(self, abcd_gt_batchnorm1, abcd_pre_trainshape, si, sz, dist_thres=50):
+        abcd_gt_trainshape = abcd_gt_batchnorm1[:, :] * self.imgsz
+        agt  =  abcd_gt_trainshape[:,0:2]
+        bgt  =  abcd_gt_trainshape[:,2:4]
+        cgt  =  abcd_gt_trainshape[:,4:6]
+        dgt  =  abcd_gt_trainshape[:,6:8]
+        apre =  abcd_pre_trainshape["apoint"][si][:,[0,1,2,3,6,7]] #x,y,adcos,adsin,leng,class
+        bpre =  abcd_pre_trainshape["bpoint"][si][:,[0,1,2,3,6,7]]
+        cpre =  abcd_pre_trainshape["cpoint"][si]
+        dpre =  abcd_pre_trainshape["dpoint"][si]
+        
+        N = agt.shape[0]
+        M = len(apre)
+        for i in range(N):
+            for j in range(M):
+                dis = self.distance(np.array(agt[i].cpu()), np.array(apre[j].cpu()))
+                if (dis < dist_thres): 
+                    self.A_dis_err.append(dis)
+        
+        N = bgt.shape[0]
+        M = len(bpre)
+        for i in range(N):
+            for j in range(M):
+                dis = self.distance(np.array(bgt[i].cpu()), np.array(bpre[j].cpu()))
+                if (dis < dist_thres): 
+                    self.B_dis_err.append(dis)
+    
+        N = cgt.shape[0]
+        M = len(cpre)
+        for i in range(N):
+            for j in range(M):
+                dis = self.distance(np.array(cgt[i].cpu()), np.array(cpre[j].cpu()))
+                if (dis < dist_thres): 
+                    self.C_dis_err.append(dis)
+        
+        N = dgt.shape[0]
+        M = len(dpre)
+        for i in range(N):
+            for j in range(M):
+                dis = self.distance(np.array(dgt[i].cpu()), np.array(dpre[j].cpu()))
+                if (dis < dist_thres): 
+                    self.D_dis_err.append(dis)            
+
+    def get_result(self):
+        A_dis_err = np.array(self.A_dis_err)
+        B_dis_err = np.array(self.B_dis_err)
+        C_dis_err = np.array(self.C_dis_err)
+        D_dis_err = np.array(self.D_dis_err)
+
+        print("A_dis_err: ",   A_dis_err.shape[0],   torch.mean(torch.abs(torch.tensor(A_dis_err))),  torch.mean(torch.pow(torch.tensor(A_dis_err),2)))
+        print("B_dis_err: ",   B_dis_err.shape[0],   torch.mean(torch.abs(torch.tensor(B_dis_err))),  torch.mean(torch.pow(torch.tensor(B_dis_err),2)))
+        print("C_dis_err: ",   C_dis_err.shape[0],   torch.mean(torch.abs(torch.tensor(C_dis_err))),  torch.mean(torch.pow(torch.tensor(C_dis_err),2)))
+        print("D_dis_err: ",   D_dis_err.shape[0],   torch.mean(torch.abs(torch.tensor(D_dis_err))),  torch.mean(torch.pow(torch.tensor(D_dis_err),2)))
+        print("\n")

@@ -949,8 +949,10 @@ def non_max_suppression(
     mi = 16 + nc  # mask start index
     output={}
     output["vpld"] = [torch.zeros((0, 11 + nm), device=prediction.device)] * bs # 11 = x y len c1 s1 ADc ADs BCc BCs conf cls  base_640
-    output["cpoint"] = [torch.zeros((0, 6), device=prediction.device)] * bs # 11 = x y len c1 s1 ADc ADs BCc BCs conf cls  base_640
-    output["dpoint"] = [torch.zeros((0, 6), device=prediction.device)] * bs # 11 = x y len c1 s1 ADc ADs BCc BCs conf cls  base_640
+    output["apoint"] = [torch.zeros((0, 8), device=prediction.device)] * bs  #  8 = Ax Ay ADc1 ADs1 ABc2 ABs2 Alen Aobj  base_640
+    output["bpoint"] = [torch.zeros((0, 10), device=prediction.device)] * bs # 10 = Bx By BCc1 BCs1 BAc2 BAs2 Blen Bobj cls1 cls2   base_640
+    output["cpoint"] = [torch.zeros((0, 6), device=prediction.device)] * bs  #  6 = Cx Cy Cc Cs Clen Cobj  base_640
+    output["dpoint"] = [torch.zeros((0, 6), device=prediction.device)] * bs  #  6 = Dx Dy Dc Ds Dlen Dobj  base_640
     for xi, x in enumerate(prediction):  # image index, image inference
         # Apply constraints
         # x[((x[..., 2:4] < min_wh) | (x[..., 2:4] > max_wh)).any(1), 4] = 0  # width-height
@@ -1139,6 +1141,8 @@ def non_max_suppression(
                 i = i[iou.sum(1) > 1]  # require redundancy
 
         output["vpld"][xi] = x[i]
+        output["apoint"][xi] = torch.tensor(Ax).to(prediction.device)
+        output["bpoint"][xi] = torch.tensor(Bx).to(prediction.device)
         output["cpoint"][xi] = torch.tensor(Cx).to(prediction.device)
         output["dpoint"][xi] = torch.tensor(Dx).to(prediction.device)
         if mps:

@@ -48,7 +48,7 @@ from utils.general import (LOGGER, Profile, check_file, check_img_size, check_im
                            increment_path, non_max_suppression, print_args, scale_boxes, strip_optimizer, xyxy2xywh)
 from utils.plots import Annotator, colors, save_one_box
 from utils.torch_utils import select_device, smart_inference_mode
-
+from utils.debug import draw_points
 
 @smart_inference_mode()
 def run(
@@ -153,6 +153,8 @@ def run(
 
         # Process predictions
         for i, det in enumerate(pred["vpld"]):  # per image
+            apts = pred["apoint"][i][:,[0,1,2,3,6,7]]
+            bpts = pred["bpoint"][i][:,[0,1,2,3,6,7]]
             cpts = pred["cpoint"][i]
             dpts = pred["dpoint"][i]
             # 0 1  2   3  4  5   6   7   8   9   10
@@ -171,15 +173,12 @@ def run(
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
             imc = im0.copy() if save_crop else im0  # for save_crop
             #annotator = Annotator(im0, line_width=line_thickness, example=str(names))
-            if len(cpts):
-                cpts[:,:2] = scale_boxes(im.shape[2:], cpts[:, :2], im0.shape).round()
-                for cx,cy,cc,cs,cleng,cobj in reversed(cpts):
-                    h,w,c = im0.shape
-                    cleng *=w
-                    cpoint1 = (round(float(cx)) , round(float(cy)))
-                    cpoint2 = (round(float(cx+cleng*cc)) , round(float(cy+cleng*cs)))
-                    cv2.circle(im0, cpoint1, 1, (0,0,255), 4)
-                    #cv2.arrowedLine(im0, cpoint1, cpoint2, (255,0,0), 1, 4)
+
+            if 0:           
+                draw_points(im0, apts, im.shape[2:], 2, (255,0,0))
+                draw_points(im0, bpts, im.shape[2:], 4, (0,255,0))  
+                draw_points(im0, cpts, im.shape[2:], 2, (0,0,255))
+                draw_points(im0, dpts, im.shape[2:], 4, (0,255,255))         
 
             if len(det):
                 # Rescale boxes from img_size to im0 size

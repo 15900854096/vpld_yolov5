@@ -5,6 +5,8 @@ import sys
 import os
 from pathlib import Path
 
+from utils.general import scale_boxes
+
 point_color = [(0, 255, 0), #绿色
                (0, 0, 255), #红色
                (255, 0, 0)] #蓝色 BGR
@@ -40,3 +42,13 @@ def batch_draw_save(imgs,labelses):
         if(cnt>200):
             sys.exit()
         
+def draw_points(img, pts, trainshape, rad, color):
+    if len(pts):
+        pts[:,:2] = scale_boxes(trainshape, pts[:, :2], img.shape).round()
+        for x,y,cosv,sinv,lengv,cobj in reversed(pts):
+            h,w,c = img.shape
+            lengv *=w
+            cpoint1 = (round(float(x)) , round(float(y)))
+            cpoint2 = (round(float(x+lengv*cosv)) , round(float(y+lengv*sinv)))
+            cv2.circle(img, cpoint1, rad, color, 4)
+            #cv2.arrowedLine(img, cpoint1, cpoint2, color, 1, 4)    

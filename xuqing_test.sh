@@ -1,6 +1,6 @@
 python ./detect.py \
---weights ./runs/train/20250425newrule/weights/last_1199.pt \
---source /home/xuqing/ori \
+--weights ./runs/train/20250718newrule/weights/last_1199.pt \
+--source /home/xuqing/16582/images/ \
 --data ./xuqing/VOC_xuqing.yaml \
 --device 3 \
 --imgsz 640 \
