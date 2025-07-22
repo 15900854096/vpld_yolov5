@@ -12,8 +12,10 @@ path: /home/xuqing/vpld_groundtruth_repair/
 train: # train images (relative to 'path')  16551 images
   - newrule
   - background
+  - oldrule/oldrule2newrule
 val: # val images (relative to 'path')  4952 images
   - newrule
+  - oldrule/oldrule2newrule
 test: # test images (optional)
   - background
 

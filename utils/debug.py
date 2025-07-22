@@ -2,7 +2,8 @@ import cv2
 import cv2 as cv
 import numpy as np
 import sys
-
+import os
+from pathlib import Path
 
 point_color = [(0, 255, 0), #绿色
                (0, 0, 255), #红色
@@ -34,8 +35,8 @@ def batch_draw_save(imgs,labelses):
         img = img.transpose((1, 2, 0))
         idx = labelses[:,0] == i
         labels = labelses[idx]
-        draw_save(img,labels[:,1:],r"/home/xuqing/tools/yolov5_ori/xuqing/flipud/%06d.jpg"%cnt)
+        draw_save(img,labels[:,1:], os.path.join(Path.cwd(), r"xuqing/flipud/%06d.jpg"%cnt))
         cnt+=1
-        if(cnt>1000):
+        if(cnt>200):
             sys.exit()
         
