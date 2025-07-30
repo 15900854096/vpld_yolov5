@@ -1052,25 +1052,43 @@ def non_max_suppression(
                     npy = list([point0[0], point0[1], abdis, math.cos(abangle), math.sin(abangle), math.cos(adangle), math.sin(adangle), math.cos(bcangle), math.sin(bcangle), mean_conf]) + cls
                     #npy = list([point0[0], point0[1], abdis, math.cos(abangle), math.sin(abangle), Ap[2], Ap[3], Bp[10], Bp[11], mean_conf]) + cls
                     
-                    
+                    cfind = False
+                    cpt=[]
                     for cpoint in Cx:
                         cx, cy, cc, cs, clen, _ = cpoint
                         cbangle = math.atan2(cs, cc)
                         cdest = (cx+clen*cc*imgsz, cy+clen*cs*imgsz)
                         if( (disPts(point1 ,cdest)<20) and angle_by_atan2_opposite(cbangle,bcangle) ):
-                            bcreallangle = math.atan2(cy-point1[1], cx-point1[0])
-                            npy[7] = math.cos(bcreallangle)
-                            npy[8] = math.sin(bcreallangle)
-
+                            cfind = True
+                            cpt.append([cx, cy])
+                            # bcreallangle = math.atan2(cy-point1[1], cx-point1[0])
+                            # npy[7] = math.cos(bcreallangle)
+                            # npy[8] = math.sin(bcreallangle)
+                            #break
+                    if cfind:        
+                        cpt=np.mean(np.array(cpt),axis=0)
+                        bcreallangle = math.atan2(cpt[1]-point1[1], cpt[0]-point1[0])
+                        npy[7] = math.cos(bcreallangle)
+                        npy[8] = math.sin(bcreallangle)
+                            
+                    dfind = False
+                    dpt=[]
                     for dpoint in Dx:
                         dx, dy, dc, ds, dlen, _ = dpoint
                         daangle = math.atan2(ds, dc)
                         ddest = (dx+dlen*dc*imgsz, dy+dlen*ds*imgsz)
                         if( (disPts(point0 ,ddest)<20)  and angle_by_atan2_opposite(adangle,daangle) ):
-                            dareallangle = math.atan2(dy-point0[1], dx-point0[0])
-                            npy[5] = math.cos(dareallangle)
-                            npy[6] = math.sin(dareallangle)
-                    
+                            dfind = True
+                            dpt.append([dx, dy])
+                            # dareallangle = math.atan2(dy-point0[1], dx-point0[0])
+                            # npy[5] = math.cos(dareallangle)
+                            # npy[6] = math.sin(dareallangle)
+                            #break
+                    if dfind:        
+                        dpt=np.mean(np.array(dpt),axis=0)
+                        dareallangle = math.atan2(dpt[1]-point0[1], dpt[0]-point0[0])
+                        npy[5] = math.cos(dareallangle)
+                        npy[6] = math.sin(dareallangle)
                     
                     
                     npy = np.array(npy)

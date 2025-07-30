@@ -163,7 +163,7 @@ class ComputeLoss:
         #tcls, tbox, indices, anchors = self.build_targets(p, targets)  # targets
         if (need_cal):
             start = perf_counter_ns()
-        tcls, Atbox, Aindices, Btbox, Bindices, Ctbox, Cindices, Dtbox, Dindices, anchors = self.build_targets(p, targets)
+        tcls, Atbox, Aindices, Btbox, Bindices, Ctbox, Cindices, Dtbox, Dindices, anchors, Cindices_padding, Dindices_padding = self.build_targets(p, targets)
         # print("Ctbox: ",Ctbox)
         # print("Cindices: ",Cindices)
         if (need_cal):
@@ -178,7 +178,10 @@ class ComputeLoss:
             Bb, Ba, Bgj, Bgi = Bindices[i]  # image, anchor, gridy, gridx
             Cb, Ca, Cgj, Cgi = Cindices[i]  # image, anchor, gridy, gridx
             Db, Da, Dgj, Dgi = Dindices[i]  # image, anchor, gridy, gridx
-
+            if 0:
+                Cb_pad, Ca_pad, Cgj_pad, Cgi_pad = Cindices_padding[i]  # image, anchor, gridy, gridx
+                Db_pad, Da_pad, Dgj_pad, Dgi_pad = Dindices_padding[i]  # image, anchor, gridy, gridx
+            
             Atobj = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)  # target obj
             Btobj = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)  # target obj
             Ctobj = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)  # target obj
@@ -419,7 +422,16 @@ class ComputeLoss:
             else:
                 Dselect = torch.ones(pi.shape[:4], dtype=pi.dtype, device=self.device)
             
-        
+            
+            if 0:#想要屏蔽中途CD点的置信度损失，但是这个方案目前不合理，先关闭掉
+                cotherconf = pi[..., 23].sigmoid()
+                dotherconf = pi[..., 29].sigmoid()
+                c_ingore_conf = cotherconf[Cb_pad, Ca_pad, Cgj_pad, Cgi_pad]>0.6
+                d_ingore_conf = dotherconf[Db_pad, Da_pad, Dgj_pad, Dgi_pad]>0.6
+                Cselect[Cb_pad[c_ingore_conf], Ca_pad[c_ingore_conf], Cgj_pad[c_ingore_conf], Cgi_pad[c_ingore_conf]] = 0
+                Dselect[Db_pad[d_ingore_conf], Da_pad[d_ingore_conf], Dgj_pad[d_ingore_conf], Dgi_pad[d_ingore_conf]] = 0
+
+            
             Aobji = torch.sum(self.MSEnone(pi[..., 7].sigmoid(),  Atobj) * Aselect) / torch.sum(Aselect)
             Bobji = torch.sum(self.MSEnone(pi[..., 15].sigmoid(), Btobj) * Bselect) / torch.sum(Bselect)
             Cobji = torch.sum(self.MSEnone(pi[..., 23].sigmoid(), Ctobj) * Cselect) / torch.sum(Cselect)
@@ -494,6 +506,31 @@ class ComputeLoss:
         else:
             m=[]  
         return torch.tensor(m)  
+    
+    def connect(self, ends):
+        d0, d1 = np.abs(np.diff(ends, axis=0))[0]
+        if d0 > d1: 
+            res =  np.c_[np.linspace(ends[0, 0], ends[1, 0], d0+1, dtype=np.int32),
+                        np.round(np.linspace(ends[0, 1], ends[1, 1], d0+1))
+                        .astype(np.int32)]
+        else:
+            res =  np.c_[np.round(np.linspace(ends[0, 0], ends[1, 0], d1+1))
+                        .astype(np.int32),
+                        np.linspace(ends[0, 1], ends[1, 1], d1+1, dtype=np.int32)]
+        return res 
+
+    def connect_torch(self, ends):
+        d0, d1 = torch.abs(torch.diff(ends, axis=0))[0]
+        if d0 > d1: 
+            x = torch.linspace(ends[0, 0], ends[1, 0], d0+1, device = self.device, requires_grad=False )
+            y = torch.round(torch.linspace(ends[0, 1], ends[1, 1], d0+1, device = self.device, requires_grad=False))
+            return torch.stack( (x.long(), y.long()), dim=1)
+        else:
+            x = torch.round(torch.linspace(ends[0, 0], ends[1, 0], d1+1, device = self.device, requires_grad=False))
+            y = torch.linspace(ends[0, 1], ends[1, 1], d1+1, device = self.device, requires_grad=False)
+            return torch.stack( (x.long(), y.long()), dim=1)
+      
+
         
     def build_targets(self, p, targets):   
         #translation
@@ -553,7 +590,9 @@ class ComputeLoss:
         # Build targets for compute_loss(), input targets(image,class,x,y,w,h)
         na, nt = self.na, targets.shape[0]  # number of anchors, targets
         tcls, Atbox, Btbox, Ctbox, Dtbox, Aindices, Bindices, Cindices, Dindices, anch = [], [], [], [], [], [], [], [], [], []
-
+        
+        Cindices_padding, Dindices_padding = [], []
+        
         # normalized to gridspace gain: 
         # img_id occupy Ax Ay c1 s1  leng c2 s2 && Bx By c1 s1 leng c2 s2 intersects Cx Cy CBc1 CBs1 CBleng Dx Dy DAc1 DAs1 DAleng arid
         gain = torch.ones(18+10, device=self.device)
@@ -699,6 +738,57 @@ class ComputeLoss:
                 Dgij = (Dgxy - offsets).long()
                 Dgi, Dgj = Dgij.T  # grid indices
 
+                if 0:#想要屏蔽中途CD点的置信度损失，但是这个方案目前不合理，先关闭掉
+                    smp = torch.tensor([], device=self.device, dtype=torch.int64)    
+                    cc1,cc2,cc3,cc4 = smp,smp,smp,smp
+                    tmp_Ax = tmp_Ax/shape[3]*640
+                    tmp_Ay = tmp_Ay/shape[2]*640
+                    tmp_Bx = tmp_Bx/shape[3]*640
+                    tmp_By = tmp_By/shape[2]*640 
+                    tmp_Cx = tmp_Cx/shape[3]*640
+                    tmp_Cy = tmp_Cy/shape[2]*640
+                    tmp_Dx = tmp_Dx/shape[3]*640
+                    tmp_Dy = tmp_Dy/shape[2]*640
+                    for idx in range(b.shape[0]):
+                        one_b, one_a, one_tmp_Bx, one_tmp_By, one_tmp_Cx, one_tmp_Cy = b[idx],a[idx],tmp_Bx[idx],tmp_By[idx],tmp_Cx[idx],tmp_Cy[idx]
+                        bx_by_cx_cy = torch.tensor([ [one_tmp_Bx.long(), one_tmp_By.long() ],
+                                                    [one_tmp_Cx.long(), one_tmp_Cy.long() ]])
+                        cptlist = self.connect_torch(bx_by_cx_cy).to(self.device)
+                        cptlist = cptlist/torch.tensor([640,640],device=self.device)*torch.tensor([shape[3],shape[2]],device=self.device)
+                        cptlist = (cptlist - offsets).long()
+                        cptlist = torch.unique(cptlist,dim=0)[1:-1,:] 
+                        
+                        one_b = one_b.repeat(cptlist.shape[0])
+                        one_a = one_a.repeat(cptlist.shape[0])
+                        cptlisti, cptlistj = cptlist.T  # grid indices
+                        
+                        cc1 = torch.cat((cc1, one_b), 0)
+                        cc2 = torch.cat((cc2, one_a), 0)
+                        cc3 = torch.cat((cc3, cptlistj.clamp_(0, shape[2] - 1)), 0)
+                        cc4 = torch.cat((cc4, cptlisti.clamp_(0, shape[3] - 1)), 0)   
+                    Cindices_padding.append((cc1,cc2,cc3,cc4)) 
+                    
+                    dd1,dd2,dd3,dd4 = smp,smp,smp,smp
+                    for idx in range(b.shape[0]):
+                        one_b, one_a, one_tmp_Ax, one_tmp_Ay, one_tmp_Dx, one_tmp_Dy = b[idx],a[idx],tmp_Ax[idx],tmp_Ay[idx],tmp_Dx[idx],tmp_Dy[idx]
+                        ax_ay_dx_dy = torch.tensor([ [one_tmp_Ax.long(), one_tmp_Ay.long() ],
+                                                    [one_tmp_Dx.long(), one_tmp_Dy.long() ]])
+                        dptlist = self.connect_torch(ax_ay_dx_dy).to(self.device)
+                        dptlist = dptlist/torch.tensor([640,640],device=self.device)*torch.tensor([shape[3],shape[2]],device=self.device)
+                        dptlist = (dptlist - offsets).long()
+                        dptlist = torch.unique(dptlist,dim=0)[1:-1,:] 
+                        
+                        one_b = one_b.repeat(dptlist.shape[0])
+                        one_a = one_a.repeat(dptlist.shape[0])
+                        dptlisti, dptlistj = dptlist.T  # grid indices
+                        
+                        dd1 = torch.cat((dd1, one_b), 0)
+                        dd2 = torch.cat((dd2, one_a), 0)
+                        dd3 = torch.cat((dd3, dptlistj.clamp_(0, shape[2] - 1)), 0)
+                        dd4 = torch.cat((dd4, dptlisti.clamp_(0, shape[3] - 1)), 0)    
+                    Dindices_padding.append((dd1,dd2,dd3,dd4)) 
+                
+                    
                 # Append
                 Aindices.append((b, a, Agj.clamp_(0, shape[2] - 1), Agi.clamp_(0, shape[3] - 1)))  # image, anchor, grid
                 Bindices.append((b, a, Bgj.clamp_(0, shape[2] - 1), Bgi.clamp_(0, shape[3] - 1)))  # image, anchor, grid
@@ -723,5 +813,7 @@ class ComputeLoss:
         # print("Dtbox: ",Dtbox)
         # print("Dindices: ",Dindices)
         # print("anch: ",anch)
-        #sys.exit()
-        return tcls, Atbox, Aindices, Btbox, Bindices, Ctbox, Cindices, Dtbox, Dindices, anch
+        # print("Cindices_padding: ",Cindices_padding)
+        # print("Dindices_padding: ",Dindices_padding)
+        # sys.exit()
+        return tcls, Atbox, Aindices, Btbox, Bindices, Ctbox, Cindices, Dtbox, Dindices, anch, Cindices_padding, Dindices_padding

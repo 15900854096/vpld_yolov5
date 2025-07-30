@@ -435,7 +435,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             if (epoch<=1):
                 load_start_time = perf_counter_ns()    
             # end batch ------------------------------------------------------------------------------------------------
-        if (epoch<=1):
+        if (epoch<=5):
             print("dataload_time:     %.4f s"%(dataload_time/1000000000.0))
             print("forward_time:      %.4f s"%(forward_time/1000000000.0))
             print("cal_loss_time:     %.4f s"%(cal_loss_time/1000000000.0))
