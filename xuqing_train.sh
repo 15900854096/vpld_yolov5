@@ -1,7 +1,9 @@
 #sleep 7h
-python train.py  \
+python  -m torch.distributed.run \
+--nproc_per_node 8 \
+train.py  \
 --weights xuqing/yolov5s.pt \
---name 20250620searching \
+--name 20250730searching \
 --cfg ./xuqing/yolov5s_xuqing.yaml  \
 --data ./xuqing/VOC_xuqing.yaml  \
 --device 0,1,2,3,4,5,6,7 \
@@ -13,7 +15,7 @@ python train.py  \
 --noautoanchor \
 --patience 0 \
 --cache  disk \
---workers 32 \
+--workers 128 \
 --sync-bn \
 #--resume
 
