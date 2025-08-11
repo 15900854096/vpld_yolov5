@@ -209,7 +209,7 @@ class DetectionModel(BaseModel):
             self.yaml_file = Path(cfg).name
             with open(cfg, encoding='ascii', errors='ignore') as f:
                 self.yaml = yaml.safe_load(f)  # model dict
-        print("DetectionModel::self.yaml: ", self.yaml)
+        #print("DetectionModel::self.yaml: ", self.yaml)
         # Define model
         ch = self.yaml['ch'] = self.yaml.get('ch', ch)  # input channels
         if nc and nc != self.yaml['nc']:

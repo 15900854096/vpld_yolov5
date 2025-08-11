@@ -78,6 +78,12 @@ GIT_INFO = check_git_info()
 
 
 def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictionary
+    print("LOCAL_RANK: ", LOCAL_RANK)
+    print("RANK: ", RANK)
+    print("WORLD_SIZE: ", WORLD_SIZE)
+    if RANK in {-1, 0}:
+        print("GIT_INFO: ", GIT_INFO)
+    
     save_dir, epochs, batch_size, weights, single_cls, evolve, data, cfg, resume, noval, nosave, workers, freeze = \
         Path(opt.save_dir), opt.epochs, opt.batch_size, opt.weights, opt.single_cls, opt.evolve, opt.data, opt.cfg, \
         opt.resume, opt.noval, opt.nosave, opt.workers, opt.freeze
@@ -128,12 +134,14 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     # Model
     check_suffix(weights, '.pt')  # check weights
     pretrained = weights.endswith('.pt')
-    print("pretrained:",pretrained)
+    if RANK in {-1, 0}:
+        print("pretrained:",pretrained)
     if pretrained:
         with torch_distributed_zero_first(LOCAL_RANK):
             weights = attempt_download(weights)  # download if not found locally
         ckpt = torch.load(weights, map_location='cpu')  # load checkpoint to CPU to avoid CUDA memory leak
-        print("cfg: " , cfg)
+        if RANK in {-1, 0}:
+            print("cfg: " , cfg)
         #print("ckpt['model'].yaml: " , ckpt['model'].yaml)
         model = Model(cfg or ckpt['model'].yaml, ch=3, nc=nc, anchors=hyp.get('anchors')).to(device)  # create
         exclude = ['anchor'] if (cfg or hyp.get('anchors')) and not resume else []  # exclude keys
@@ -184,7 +192,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     if pretrained:
         if resume:
             best_fitness, start_epoch, epochs = smart_resume(ckpt, optimizer, ema, weights, epochs, resume)
-            print("resume: ",best_fitness, start_epoch, epochs, batch_size, device, model)
+            if RANK in {-1, 0}:
+                print("resume: ",best_fitness, start_epoch, epochs, batch_size, device, model)
         del ckpt, csd
 
     # DP mode
@@ -256,9 +265,11 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     model.nc = nc  # attach number of classes to model
     model.hyp = hyp  # attach hyperparameters to model
     model.class_weights = labels_to_class_weights(dataset.labels, nc).to(device) * nc  # attach class weights
-    print("model.class_weights: ", model.class_weights)
+    if RANK in {-1, 0}:
+        print("model.class_weights: ", model.class_weights)
     model.names = names
-    print("model.names: ", model.names)
+    if RANK in {-1, 0}:
+        print("model.names: ", model.names)
     
     # Start training
     t0 = time.time()
@@ -377,21 +388,21 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 mem = f'{torch.cuda.memory_reserved() / 1E9 if torch.cuda.is_available() else 0:.3g}G'  # (GB)
                 pbar.set_description(('%11s' * 2 + '%11.4g' * 5) %
                                      (f'{epoch}/{epochs - 1}', mem, *mloss, targets.shape[0], imgs.shape[-1]))
-                
                 callbacks.run('on_train_batch_end', model, ni, imgs, targets, paths, list(mloss))
                 if callbacks.stop_training:
                     return
             if (epoch<=1):
                 load_start_time = perf_counter_ns()    
             # end batch ------------------------------------------------------------------------------------------------
-        if (epoch<=1):
+        if (RANK in {-1, 0} and epoch<=1):
             print("dataload_time:     %.4f s"%(dataload_time/1000000000.0))
             print("forward_time:      %.4f s"%(forward_time/1000000000.0))
             print("cal_loss_time:     %.4f s"%(cal_loss_time/1000000000.0))
             print("backforward_time:  %.4f s"%(backforward_time/1000000000.0))
             compute_loss.get_cosume_time()
-            
-        txtlog.writelines(('\n' + '%11s' * 2 + '%11.4g' * 5) % (f'{epoch}/{epochs - 1}', mem, *mloss, targets.shape[0], imgs.shape[-1]))
+        if (RANK in {-1, 0}):
+            txtlog.writelines(('\n' + '%11s' * 2 + '%11.4g' * 5) % (f'{epoch}/{epochs - 1}', mem, *mloss, targets.shape[0], imgs.shape[-1]))
+
         # Scheduler
         lr = [x['lr'] for x in optimizer.param_groups]  # for loggers
         scheduler.step()

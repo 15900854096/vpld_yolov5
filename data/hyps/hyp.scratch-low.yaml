@@ -47,7 +47,7 @@ AddPepperSaltNoise: 0.15
 
 CAREABOUT_LOT_TYPE: 0 #是否需要不关注库位类型，来测试库位的mAP
 USE_THREE_POSITIVE_SAMPLE: 0 #是否需要把一个正样本扩充为三个样本来预测，此策略来自于yolov5
-NEG_POS_RATE: 10
-ALL_PARKING_LOT_SAME_WEIGHT: 1
+NEG_POS_RATE: 5
+ALL_PARKING_LOT_SAME_WEIGHT: 0
 
 EXPORT_ONNX: 0  #只有部署在J3上时，为了防止J3模型的数据在BPU和CPU上来回切换，所以需要截断最后几个基本层，后续的数据在CPU上做后处理，来替换这些基本层
