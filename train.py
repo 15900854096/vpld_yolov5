@@ -316,7 +316,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             dataload_time, forward_time, cal_loss_time, backforward_time = 0, 0, 0, 0
             load_start_time = perf_counter_ns()
         for i, (imgs, targets, paths, _) in pbar:  # batch -------------------------------------------------------------
-            #batch_draw_save(imgs,targets)
+            #batch_draw_save(imgs,targets,RANK)
             #continue 
             if (epoch<=1):
                 load_end_time = perf_counter_ns()

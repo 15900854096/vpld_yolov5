@@ -2,6 +2,8 @@ import cv2
 import cv2 as cv
 import numpy as np
 import sys
+import os
+from pathlib import Path
 
 
 point_color = [(0, 255, 0), #绿色
@@ -25,7 +27,7 @@ def draw_save(img,labels,address):
     
 
 cnt=0
-def batch_draw_save(imgs,labelses):
+def batch_draw_save(imgs,labelses,RANK=0):
     imgs = np.array(imgs)
     labelses = np.array(labelses)
     global cnt
@@ -34,7 +36,7 @@ def batch_draw_save(imgs,labelses):
         img = img.transpose((1, 2, 0))
         idx = labelses[:,0] == i
         labels = labelses[idx]
-        draw_save(img,labels[:,1:],r"/home/xuqing/tools/yolov5_ori/xuqing/flipud/%06d.jpg"%cnt)
+        draw_save(img,labels[:,1:], os.path.join(Path.cwd(), r"xuqing/rotate/%d_%06d.jpg"%(RANK,cnt)))
         cnt+=1
         if(cnt>1000):
             sys.exit()
