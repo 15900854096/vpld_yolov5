@@ -1,7 +1,7 @@
 python ./val.py \
 --weights ./runs/train/20250620searching/weights/best.pt \
 --data ./xuqing/VOC_xuqing.yaml \
---device 0,1,2,3 \
+--device 4,5,6,7 \
 --imgsz 640 \
 --batch-size 80 \
 --conf-thres 0.45 \
