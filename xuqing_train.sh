@@ -1,11 +1,11 @@
-#sleep 7h
+#sleep 33h
 python -m torch.distributed.run \
 --nproc_per_node 8 \
 --master_addr "10.0.8.21" \
---master_port 1422 \
+--master_port 1425 \
 train.py \
 --weights xuqing/yolov5s.pt \
---name 20250815searching_DDP \
+--name 20250819searching_DDP \
 --cfg ./xuqing/yolov5s_xuqing.yaml  \
 --data ./xuqing/VOC_xuqing.yaml  \
 --device 0,1,2,3,4,5,6,7 \
