@@ -32,9 +32,9 @@ def ap_per_class(tp, conf, pred_cls, target_cls, plot=False, save_dir='.', names
     """ Compute the average precision, given the recall and precision curves.
     Source: https://github.com/rafaelpadilla/Object-Detection-Metrics.
     # Arguments
-        tp:  True positives (nparray, nx1 or nx10).
-        conf:  Objectness value from 0-1 (nparray).
-        pred_cls:  Predicted object classes (nparray).
+        tp:  True positives (nparray, nx1 or nx10).    ([N, 10]), for 10 IoU levels, bool value
+        conf:  Objectness value from 0-1 (nparray).    ([N, 1 ]), for conf
+        pred_cls:  Predicted object classes (nparray). ([N, 1 ]), for class label
         target_cls:  True object classes (nparray).
         plot:  Plot precision-recall curve at mAP@0.5
         save_dir:  Plot save directory
@@ -43,16 +43,16 @@ def ap_per_class(tp, conf, pred_cls, target_cls, plot=False, save_dir='.', names
     """
 
     # Sort by objectness
-    i = np.argsort(-conf)
+    i = np.argsort(-conf) #降序排列
     tp, conf, pred_cls = tp[i], conf[i], pred_cls[i]
 
     # Find unique classes
-    unique_classes, nt = np.unique(target_cls, return_counts=True)
+    unique_classes, nt = np.unique(target_cls, return_counts=True) #unique_classes不重复的类别，nt：每个类别的数量
     nc = unique_classes.shape[0]  # number of classes, number of detections
 
     # Create Precision-Recall curve and compute AP for each class
     px, py = np.linspace(0, 1, 1000), []  # for plotting
-    ap, p, r = np.zeros((nc, tp.shape[1])), np.zeros((nc, 1000)), np.zeros((nc, 1000))
+    ap, p, r = np.zeros((nc, tp.shape[1])), np.zeros((nc, 1000)), np.zeros((nc, 1000))  #ap：nc行10列（map50:55:60:65:70:75:80:85:90:95）
     for ci, c in enumerate(unique_classes):
         i = pred_cls == c
         n_l = nt[ci]  # number of labels
@@ -60,8 +60,8 @@ def ap_per_class(tp, conf, pred_cls, target_cls, plot=False, save_dir='.', names
         if n_p == 0 or n_l == 0:
             continue
 
-        # Accumulate FPs and TPs
-        fpc = (1 - tp[i]).cumsum(0)
+        # Accumulate FPs and TPs fpc和tpc均是C类目标数量行10列
+        fpc = (1 - tp[i]).cumsum(0) #tp[i]:c这个类别的预测目标，行数是数量，列数是10列（map50-95）,内部是bool值
         tpc = tp[i].cumsum(0)
 
         # Recall

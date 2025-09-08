@@ -151,7 +151,7 @@ class ComputeLoss:
         self.polycar = Polygon(self.polycar).convex_hull
         self.consum_time=[0,0,0,0]
 
-    def __call__(self, p, targets, epoch=0, i_iter=0):  # predictions, targets
+    def __call__(self, p, targets, epoch=0, epochs=1200, i_iter=0):  # predictions, targets
         need_cal = epoch<=1
         if(i_iter==0 and need_cal):
             self.consum_time=[0,0,0,0]
@@ -168,6 +168,8 @@ class ComputeLoss:
             end = perf_counter_ns()
             self.consum_time[0] += end-start
         random.seed(time.time_ns()%(2**32 - 1))
+        # random.seed(epoch + i_iter) #原本是想着DDP，确保所有进程选取相同位置的负样本，但是由于正样本没有统一，所以没什么用
+        
         # Losses
         for i, pi in enumerate(p):  # layer index, layer predictions
             rowlist = range(pi.shape[2]-1)
@@ -211,8 +213,8 @@ class ComputeLoss:
                     Bitst[Bitst>0] *= 5
                     Bitst += 1
                 
-                Aitst = torch.ones_like(Aitst, device=self.device)
-                Bitst = torch.ones_like(Bitst, device=self.device)
+                # Aitst = torch.ones_like(Aitst, device=self.device)
+                # Bitst = torch.ones_like(Bitst, device=self.device)
                 Aitst=torch.concat((Aitst,Aitst),axis=1)
                 Bitst=torch.concat((Bitst,Bitst),axis=1)
                 
@@ -321,50 +323,50 @@ class ComputeLoss:
             
             if na:
                 Aselect = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device) #NCHW
-                # if hyp["SELECT_DIFF_NEG_SAMPLE"]:
-                _baseline_samp = 20 # hyp["NEG_POS_TOTAL"]
-                _bs = pi.shape[0]
-                _as = pi.shape[1]
-                _h  = pi.shape[2]
-                _w  = pi.shape[3]
-                
-                conftemp = pi[..., 7].sigmoid()
-                conftemp = conftemp.reshape(_bs, _as, -1)
-                idc = torch.sort(conftemp, -1, True).indices #降序排列, 挑选置信度最高的预测值
-                idc = idc[:, :, :_baseline_samp]
-                idcreshape = idc.reshape(-1)
-                
-                _bsrepeat = torch.arange(_bs).repeat_interleave(_as*_baseline_samp)
-                _asrepeat = torch.arange(_as).repeat(_bs).repeat_interleave(_baseline_samp)
-                hlist = idcreshape//_w
-                wlist = idcreshape%_w
-                Aselect[_bsrepeat, _asrepeat, hlist, wlist] = 1
-                Aselect[Ab, Aa, Agj, Agi] = 2 
-                # print("pi.shape: ", pi.shape)
-                # print("_bsrepeat: ", _bsrepeat)
-                # print("_asrepeat:", _asrepeat)
-                # print("hlist:", hlist)
-                # print("wlist:", wlist)
-                # print("Ab, Aa, Agj, Agi: ",Ab, Aa, Agj, Agi)
-                # print("torch.sum(Aselect): ", torch.sum(Aselect))
-                # df = pd.DataFrame(np.array(Aselect[0][0].cpu()))
-                # df.to_excel(r"11.xlsx", sheet_name="sheet1", index= False,encoding="utf-8")
-                # df = pd.DataFrame(np.array(Aselect[1][0].cpu()))
-                # df.to_excel(r"12.xlsx", sheet_name="sheet1", index= False,encoding="utf-8")
-                # sys.exit()
-                # else: #随机选择负样本
-                # # 每个图像的每层archor(实际上就一个archor)上必须有_baseline_neg个负样本
-                # # pi.shape[:4] batchsize anchor_num outputbuffer_h outputbuffer_w
-                # _baseline_neg = 20
-                # _bs = pi.shape[0]
-                # _as = pi.shape[1]
-                # batch_list = torch.arange(0, _bs).repeat(_baseline_neg*_as)
-                # anchor_list = torch.arange(0, _as).repeat(_baseline_neg*_bs)
-                # Aselect[batch_list, anchor_list, random.choices(rowlist, k = _baseline_neg*_as*_bs),random.choices(collist, k = _baseline_neg*_as*_bs)] = 1
-                # list1 = random.choices(rowlist, k = na * hyp["NEG_POS_RATE"])
-                # list2 = random.choices(collist, k = na * hyp["NEG_POS_RATE"])
-                # Aselect[Ab.repeat(hyp["NEG_POS_RATE"]), Aa.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1
-                # Aselect[Ab, Aa, Agj, Agi] = 1 
+                if (epoch >= epochs-40):
+                    _baseline_samp = 20 # hyp["NEG_POS_TOTAL"]
+                    _bs = pi.shape[0]
+                    _as = pi.shape[1]
+                    _h  = pi.shape[2]
+                    _w  = pi.shape[3]
+                    
+                    conftemp = pi[..., 7].sigmoid()
+                    conftemp = conftemp.reshape(_bs, _as, -1)
+                    idc = torch.sort(conftemp, -1, True).indices #降序排列, 挑选置信度最高的预测值
+                    idc = idc[:, :, :_baseline_samp]
+                    idcreshape = idc.reshape(-1)
+                    
+                    _bsrepeat = torch.arange(_bs).repeat_interleave(_as*_baseline_samp)
+                    _asrepeat = torch.arange(_as).repeat(_bs).repeat_interleave(_baseline_samp)
+                    hlist = idcreshape//_w
+                    wlist = idcreshape%_w
+                    Aselect[_bsrepeat, _asrepeat, hlist, wlist] = 1
+                    Aselect[Ab, Aa, Agj, Agi] = 1 
+                    # print("pi.shape: ", pi.shape)
+                    # print("_bsrepeat: ", _bsrepeat)
+                    # print("_asrepeat:", _asrepeat)
+                    # print("hlist:", hlist)
+                    # print("wlist:", wlist)
+                    # print("Ab, Aa, Agj, Agi: ",Ab, Aa, Agj, Agi)
+                    # print("torch.sum(Aselect): ", torch.sum(Aselect))
+                    # df = pd.DataFrame(np.array(Aselect[0][0].cpu()))
+                    # df.to_excel(r"11.xlsx", sheet_name="sheet1", index= False,encoding="utf-8")
+                    # df = pd.DataFrame(np.array(Aselect[1][0].cpu()))
+                    # df.to_excel(r"12.xlsx", sheet_name="sheet1", index= False,encoding="utf-8")
+                    # sys.exit()
+                else: #随机选择负样本
+                    # 每个图像的每层archor(实际上就一个archor)上必须有_baseline_neg个负样本
+                    # pi.shape[:4] batchsize anchor_num outputbuffer_h outputbuffer_w
+                    _baseline_neg = 20
+                    _bs = pi.shape[0]
+                    _as = pi.shape[1]
+                    batch_list = torch.arange(0, _bs).repeat(_baseline_neg*_as)
+                    anchor_list = torch.arange(0, _as).repeat(_baseline_neg*_bs)
+                    Aselect[batch_list, anchor_list, random.choices(rowlist, k = _baseline_neg*_as*_bs),random.choices(collist, k = _baseline_neg*_as*_bs)] = 1
+                    list1 = random.choices(rowlist, k = na * hyp["NEG_POS_RATE"])
+                    list2 = random.choices(collist, k = na * hyp["NEG_POS_RATE"])
+                    Aselect[Ab.repeat(hyp["NEG_POS_RATE"]), Aa.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1
+                    Aselect[Ab, Aa, Agj, Agi] = 1 
             else:
                 Aselect = torch.ones(pi.shape[:4], dtype=pi.dtype, device=self.device)
             
@@ -372,38 +374,38 @@ class ComputeLoss:
             if nb:
                 Bselect = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)
 
-                # if hyp["SELECT_DIFF_NEG_SAMPLE"]:
-                _baseline_samp = 20 # hyp["NEG_POS_TOTAL"]
-                _bs = pi.shape[0]
-                _as = pi.shape[1]
-                _h  = pi.shape[2]
-                _w  = pi.shape[3]
-                
-                conftemp = pi[..., 15].sigmoid()
-                conftemp = conftemp.reshape(_bs, _as, -1)
-                idc = torch.sort(conftemp, -1, True).indices #降序排列, 挑选置信度最高的预测值
-                idc = idc[:, :, :_baseline_samp]
-                idcreshape = idc.reshape(-1)
-                
-                _bsrepeat = torch.arange(_bs).repeat_interleave(_as*_baseline_samp)
-                _asrepeat = torch.arange(_as).repeat(_bs).repeat_interleave(_baseline_samp)
-                hlist = idcreshape//_w
-                wlist = idcreshape%_w
-                Bselect[_bsrepeat, _asrepeat, hlist, wlist] = 1
-                Bselect[Bb, Ba, Bgj, Bgi] = 2
-                # else: #随机选择负样本
-                # # 每个图像的每层archor(实际上就一个archor)上必须有_baseline_neg个负样本
-                # _baseline_neg = 20
-                # _bs = pi.shape[0]
-                # _as = pi.shape[1]
-                # batch_list = torch.arange(0, _bs).repeat(_baseline_neg*_as)
-                # anchor_list = torch.arange(0, _as).repeat(_baseline_neg*_bs)
-                # Bselect[batch_list, anchor_list, random.choices(rowlist, k = _baseline_neg*_as*_bs), random.choices(collist, k = _baseline_neg*_as*_bs)] = 1
-                
-                # list1 = random.choices(rowlist, k = nb * hyp["NEG_POS_RATE"])
-                # list2 = random.choices(collist, k = nb * hyp["NEG_POS_RATE"])
-                # Bselect[Bb.repeat(hyp["NEG_POS_RATE"]), Ba.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1 
-                # Bselect[Bb, Ba, Bgj, Bgi] = 1
+                if (epoch >= epochs-40):
+                    _baseline_samp = 20 # hyp["NEG_POS_TOTAL"]
+                    _bs = pi.shape[0]
+                    _as = pi.shape[1]
+                    _h  = pi.shape[2]
+                    _w  = pi.shape[3]
+                    
+                    conftemp = pi[..., 15].sigmoid()
+                    conftemp = conftemp.reshape(_bs, _as, -1)
+                    idc = torch.sort(conftemp, -1, True).indices #降序排列, 挑选置信度最高的预测值
+                    idc = idc[:, :, :_baseline_samp]
+                    idcreshape = idc.reshape(-1)
+                    
+                    _bsrepeat = torch.arange(_bs).repeat_interleave(_as*_baseline_samp)
+                    _asrepeat = torch.arange(_as).repeat(_bs).repeat_interleave(_baseline_samp)
+                    hlist = idcreshape//_w
+                    wlist = idcreshape%_w
+                    Bselect[_bsrepeat, _asrepeat, hlist, wlist] = 1
+                    Bselect[Bb, Ba, Bgj, Bgi] = 1
+                else: #随机选择负样本
+                    # 每个图像的每层archor(实际上就一个archor)上必须有_baseline_neg个负样本
+                    _baseline_neg = 20
+                    _bs = pi.shape[0]
+                    _as = pi.shape[1]
+                    batch_list = torch.arange(0, _bs).repeat(_baseline_neg*_as)
+                    anchor_list = torch.arange(0, _as).repeat(_baseline_neg*_bs)
+                    Bselect[batch_list, anchor_list, random.choices(rowlist, k = _baseline_neg*_as*_bs), random.choices(collist, k = _baseline_neg*_as*_bs)] = 1
+                    
+                    list1 = random.choices(rowlist, k = nb * hyp["NEG_POS_RATE"])
+                    list2 = random.choices(collist, k = nb * hyp["NEG_POS_RATE"])
+                    Bselect[Bb.repeat(hyp["NEG_POS_RATE"]), Ba.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1 
+                    Bselect[Bb, Ba, Bgj, Bgi] = 1
                     
             else:
                 Bselect = torch.ones(pi.shape[:4], dtype=pi.dtype, device=self.device)

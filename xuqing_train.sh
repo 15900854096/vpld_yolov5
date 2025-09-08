@@ -1,22 +1,17 @@
 #sleep 33h
-python -m torch.distributed.run \
---nproc_per_node 8 \
---master_addr "10.0.8.21" \
---master_port 1425 \
-train.py \
+python train.py \
 --weights xuqing/yolov5s.pt \
---name 20250819searching_DDP \
+--name 20250905searching \
 --cfg ./xuqing/yolov5s_xuqing.yaml  \
 --data ./xuqing/VOC_xuqing.yaml  \
 --device 0,1,2,3,4,5,6,7 \
 --imgsz 640 \
 --epoch 900 \
---batch-size 320 \
+--batch-size 512 \
 --label-smoothing 0.2 \
 --noautoanchor \
---patience 0 \
---cache  disk \
---workers 32 \
+--patience 10000000000 \
+--workers 16 \
 --sync-bn \
 #--resume
 
@@ -26,3 +21,6 @@ train.py \
 
 #--sync-bn parkinh use it,searching not use it
 #python train.py   --weights /home/xuqing/tools/yolov5_ori/runs/train/exp/weights/best.pt --cfg ./xuqing/yolov5s_xuqing.yaml  --data ./xuqing/VOC_xuqing.yaml  --device 0,1,2,3,4,5,6,7 --imgsz 640 --rect --epoch 900 --batch-size 400  --noautoanchor --sync-bn #--resume 
+
+# -m torch.distributed.run \
+# --nproc_per_node 8 \

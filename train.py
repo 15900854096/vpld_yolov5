@@ -74,7 +74,7 @@ import sys
 LOCAL_RANK = int(os.getenv('LOCAL_RANK', -1))  # https://pytorch.org/docs/stable/elastic/run.html
 RANK = int(os.getenv('RANK', -1))
 WORLD_SIZE = int(os.getenv('WORLD_SIZE', 1))
-GIT_INFO = check_git_info()
+GIT_INFO = "No git tool in docker!!!!!" #check_git_info()
 
 
 def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictionary
@@ -354,7 +354,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                     end = perf_counter_ns()
                     forward_time = forward_time + end-start
                     start = perf_counter_ns()
-                loss, loss_items = compute_loss(pred, targets.to(device), epoch, i)  # loss scaled by batch_size
+                loss, loss_items = compute_loss(pred, targets.to(device), epoch, epochs, i)  # loss scaled by batch_size
                 if (epoch<=1):
                     end = perf_counter_ns()
                     cal_loss_time = cal_loss_time + end-start
@@ -389,6 +389,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 mem = f'{torch.cuda.memory_reserved() / 1E9 if torch.cuda.is_available() else 0:.3g}G'  # (GB)
                 pbar.set_description(('%11s' * 2 + '%11.4g' * 5) %
                                      (f'{epoch}/{epochs - 1}', mem, *mloss, targets.shape[0], imgs.shape[-1]))
+                
                 callbacks.run('on_train_batch_end', model, ni, imgs, targets, paths, list(mloss))
                 if callbacks.stop_training:
                     return
@@ -413,7 +414,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             callbacks.run('on_train_epoch_end', epoch=epoch)
             ema.update_attr(model, include=['yaml', 'nc', 'hyp', 'names', 'stride', 'class_weights'])
             final_epoch = (epoch + 1 == epochs) or stopper.possible_stop
-            if ((not noval or final_epoch) and (epoch >= min(0.5*epochs, 200)) and (epoch%50 == 0)):  # Calculate mAP
+            if ((not noval or final_epoch) and (epoch >= min(0.5*epochs, 500)) and (epoch%500000000 == 0)):  # Calculate mAP
             #if ((not noval or final_epoch) and (epoch > min(0.5*epochs, 0)) and (epoch%1 == 0)):
                 results, maps, _ = validate.run(data_dict,
                                                 batch_size=batch_size // WORLD_SIZE,
@@ -438,7 +439,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             log_vals = list(mloss) + list(results) + lr
             callbacks.run('on_fit_epoch_end', log_vals, epoch, best_fitness, fi)
 
-            if ((epoch == 0) or (epoch % 50 == 0)):
+            if ((epoch == 0) or (epoch % 50 == 0) or (epoch==epochs-1)):
                 ckpt = {'epoch': epoch,'best_fitness': best_fitness,'model': deepcopy(de_parallel(model)).half(),'ema': deepcopy(ema.ema).half(),'updates': ema.updates,'optimizer': optimizer.state_dict(),'opt': vars(opt),'git': GIT_INFO,'date': datetime.now().isoformat()}
                 print("#######################   ", epoch, ":", loss)
                 torch.save(ckpt, w / ('last_%d.pt'%epoch))

@@ -192,8 +192,8 @@ def run(
                         leng = leng*w
                         p1 = (round(float(x)) , round(float(y)))
                         p2 = (round(float(x+leng*c1)) , round(float(y+leng*s1)))
-                        p3 = (round(float(p2[0]+500*BCc)) , round(float(p2[1]+500*BCs)))
-                        p4 = (round(float(p1[0]+500*ADc)) , round(float(p1[1]+500*ADs)))
+                        p3 = (round(float(p2[0]+200*BCc)) , round(float(p2[1]+200*BCs)))
+                        p4 = (round(float(p1[0]+200*ADc)) , round(float(p1[1]+200*ADs)))
                         #print(p1,p2,p3,p4)
                         if(cls==0):
                             color = (0,255,0)
