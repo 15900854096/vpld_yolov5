@@ -74,10 +74,16 @@ import sys
 LOCAL_RANK = int(os.getenv('LOCAL_RANK', -1))  # https://pytorch.org/docs/stable/elastic/run.html
 RANK = int(os.getenv('RANK', -1))
 WORLD_SIZE = int(os.getenv('WORLD_SIZE', 1))
-GIT_INFO = check_git_info()
+GIT_INFO = "No git tool in docker!!!!!" #check_git_info()
 
 
 def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictionary
+    print("LOCAL_RANK: ", LOCAL_RANK)
+    print("RANK: ", RANK)
+    print("WORLD_SIZE: ", WORLD_SIZE)
+    if RANK in {-1, 0}:
+        print("GIT_INFO: ", GIT_INFO)
+    
     save_dir, epochs, batch_size, weights, single_cls, evolve, data, cfg, resume, noval, nosave, workers, freeze = \
         Path(opt.save_dir), opt.epochs, opt.batch_size, opt.weights, opt.single_cls, opt.evolve, opt.data, opt.cfg, \
         opt.resume, opt.noval, opt.nosave, opt.workers, opt.freeze
@@ -128,12 +134,14 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     # Model
     check_suffix(weights, '.pt')  # check weights
     pretrained = weights.endswith('.pt')
-    print("pretrained:",pretrained)
+    if RANK in {-1, 0}:
+        print("pretrained:",pretrained)
     if pretrained:
         with torch_distributed_zero_first(LOCAL_RANK):
             weights = attempt_download(weights)  # download if not found locally
         ckpt = torch.load(weights, map_location='cpu')  # load checkpoint to CPU to avoid CUDA memory leak
-        print("cfg: " , cfg)
+        if RANK in {-1, 0}:
+            print("cfg: " , cfg)
         #print("ckpt['model'].yaml: " , ckpt['model'].yaml)
         model = Model(cfg or ckpt['model'].yaml, ch=3, nc=nc, anchors=hyp.get('anchors')).to(device)  # create
         exclude = ['anchor'] if (cfg or hyp.get('anchors')) and not resume else []  # exclude keys
@@ -145,56 +153,6 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         model = Model(cfg, ch=3, nc=nc, anchors=hyp.get('anchors')).to(device)  # create
     amp = check_amp(model)  # check AMP
     #sys.exit()
-    
-    # namelist=["model.25.conv_neckC.0.conv.weight",
-    #              "model.25.conv_neckC.1.conv.weight",
-    #              "model.25.conv_Cxy.0.conv.weight",
-    #              "model.25.conv_CBcs.0.conv.weight",
-    #              "model.25.conv_CBlen.0.conv.weight",
-    #              "model.25.conv_Cobj.0.conv.weight",
-    #              "model.25.conv_Cxy.1.weight",
-    #              "model.25.conv_CBcs.1.weight",
-    #              "model.25.conv_CBlen.1.weight",
-    #              "model.25.conv_Cobj.1.weight",
-
-    #              "model.25.conv_neckD.0.conv.weight",
-    #              "model.25.conv_neckD.1.conv.weight",
-    #              "model.25.conv_Dxy.0.conv.weight",
-    #              "model.25.conv_DAcs.0.conv.weight",
-    #              "model.25.conv_DAlen.0.conv.weight",
-    #              "model.25.conv_Dobj.0.conv.weight",
-    #              "model.25.conv_Dxy.1.weight",
-    #              "model.25.conv_DAcs.1.weight",
-    #              "model.25.conv_DAlen.1.weight",
-    #              "model.25.conv_Dobj.1.weight",
-
-    #              "model.25.conv_neckC.0.conv.bias",
-    #              "model.25.conv_neckC.1.conv.bias",
-    #              "model.25.conv_Cxy.0.conv.bias",
-    #              "model.25.conv_CBcs.0.conv.bias",
-    #              "model.25.conv_CBlen.0.conv.bias",
-    #              "model.25.conv_Cobj.0.conv.bias",
-    #              "model.25.conv_Cxy.1.bias",
-    #              "model.25.conv_CBcs.1.bias",
-    #              "model.25.conv_CBlen.1.bias",
-    #              "model.25.conv_Cobj.1.bias",
-
-    #              "model.25.conv_neckD.0.conv.bias",
-    #              "model.25.conv_neckD.1.conv.bias",
-    #              "model.25.conv_Dxy.0.conv.bias",
-    #              "model.25.conv_DAcs.0.conv.bias",
-    #              "model.25.conv_DAlen.0.conv.bias",
-    #              "model.25.conv_Dobj.0.conv.bias",
-    #              "model.25.conv_Dxy.1.bias",
-    #              "model.25.conv_DAcs.1.bias",
-    #              "model.25.conv_DAlen.1.bias",
-    #              "model.25.conv_Dobj.1.bias",
-    #              ]
-    # for k, v in model.named_parameters():
-    #     with torch.no_grad():
-    #         if(k in namelist):
-    #             v += (torch.rand(v.shape, device=v.device)*2-1)/10
-    #             print("random ok ", k, v.shape,v.device)
     
     # Freeze
     freeze = [f'model.{x}.' for x in (freeze if len(freeze) > 1 else range(freeze[0]))]  # layers to freeze  (freeze if len(freeze) > 1 else range(freeze[0]))必须是一个list
@@ -235,7 +193,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     if pretrained:
         if resume:
             best_fitness, start_epoch, epochs = smart_resume(ckpt, optimizer, ema, weights, epochs, resume)
-            print("resume: ",best_fitness, start_epoch, epochs, batch_size, device, model)
+            if RANK in {-1, 0}:
+                print("resume: ",best_fitness, start_epoch, epochs, batch_size, device, model)
         del ckpt, csd
 
     # DP mode
@@ -307,9 +266,12 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     model.nc = nc  # attach number of classes to model
     model.hyp = hyp  # attach hyperparameters to model
     model.class_weights = labels_to_class_weights(dataset.labels, nc).to(device) * nc  # attach class weights
-    print("model.class_weights: ", model.class_weights)
+    if RANK in {-1, 0}:
+        print("model.class_weights: ", model.class_weights)
     model.names = names
-    print("model.names: ", model.names)
+    if RANK in {-1, 0}:
+        print("model.names: ", model.names)
+    
     # Start training
     t0 = time.time()
     nb = len(train_loader)  # number of batches
@@ -347,7 +309,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             train_loader.sampler.set_epoch(epoch)
         pbar = enumerate(train_loader)
         LOGGER.info(('\n' + '%11s' * 7) % ('Epoch', 'GPU_mem', 'box_loss', 'obj_loss', 'cls_loss', 'Instances', 'Size'))
-        txtlog.writelines(('\n' + '%11s' * 7) % ('Epoch', 'GPU_mem', 'box_loss', 'obj_loss', 'cls_loss', 'Instances', 'Size'))
+        if (RANK in {-1, 0}):
+            txtlog.writelines(('\n' + '%11s' * 7) % ('Epoch', 'GPU_mem', 'box_loss', 'obj_loss', 'cls_loss', 'Instances', 'Size'))
         if RANK in {-1, 0}:
             pbar = tqdm(pbar, total=nb, bar_format=TQDM_BAR_FORMAT)  # progress bar
         optimizer.zero_grad()
@@ -356,7 +319,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             dataload_time, forward_time, cal_loss_time, backforward_time = 0, 0, 0, 0
             load_start_time = perf_counter_ns()
         for i, (imgs, targets, paths, _) in pbar:  # batch -------------------------------------------------------------
-            # batch_draw_save(imgs,targets)
+            # batch_draw_save(imgs,targets,RANK)
             # continue 
             if (epoch<=1):
                 load_end_time = perf_counter_ns()
@@ -393,7 +356,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                     end = perf_counter_ns()
                     forward_time = forward_time + end-start
                     start = perf_counter_ns()
-                loss, loss_items = compute_loss(pred, targets.to(device), epoch, i)  # loss scaled by batch_size
+                loss, loss_items = compute_loss(pred, targets.to(device), epoch, epochs, i)  # loss scaled by batch_size
                 if (epoch<=1):
                     end = perf_counter_ns()
                     cal_loss_time = cal_loss_time + end-start
@@ -435,14 +398,15 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             if (epoch<=1):
                 load_start_time = perf_counter_ns()    
             # end batch ------------------------------------------------------------------------------------------------
-        if (epoch<=5):
+        if (RANK in {-1, 0} and epoch<=1):
             print("dataload_time:     %.4f s"%(dataload_time/1000000000.0))
             print("forward_time:      %.4f s"%(forward_time/1000000000.0))
             print("cal_loss_time:     %.4f s"%(cal_loss_time/1000000000.0))
             print("backforward_time:  %.4f s"%(backforward_time/1000000000.0))
             compute_loss.get_cosume_time()
-            
-        txtlog.writelines(('\n' + '%11s' * 2 + '%11.4g' * 5) % (f'{epoch}/{epochs - 1}', mem, *mloss, targets.shape[0], imgs.shape[-1]))
+        if (RANK in {-1, 0}):
+            txtlog.writelines(('\n' + '%11s' * 2 + '%11.4g' * 5) % (f'{epoch}/{epochs - 1}', mem, *mloss, targets.shape[0], imgs.shape[-1]))
+
         # Scheduler
         lr = [x['lr'] for x in optimizer.param_groups]  # for loggers
         scheduler.step()

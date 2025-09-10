@@ -151,7 +151,7 @@ class ComputeLoss:
         self.polycar = Polygon(self.polycar).convex_hull
         self.consum_time=[0,0,0,0]
 
-    def __call__(self, p, targets, epoch=0, i_iter=0):  # predictions, targets
+    def __call__(self, p, targets, epoch=0, epochs=1200, i_iter=0):  # predictions, targets
         need_cal = epoch<=1
         if(i_iter==0 and need_cal):
             self.consum_time=[0,0,0,0]
@@ -163,13 +163,14 @@ class ComputeLoss:
         #tcls, tbox, indices, anchors = self.build_targets(p, targets)  # targets
         if (need_cal):
             start = perf_counter_ns()
-        tcls, Atbox, Aindices, Btbox, Bindices, Ctbox, Cindices, Dtbox, Dindices, anchors, Cindices_padding, Dindices_padding = self.build_targets(p, targets)
+        tcls, Atbox, Aindices, Btbox, Bindices, Ctbox, Cindices, Dtbox, Dindices, anchors, Ctbox_pdding, Cindices_padding, Dtbox_padding, Dindices_padding = self.build_targets(p, targets, epoch, epochs)
         # print("Ctbox: ",Ctbox)
         # print("Cindices: ",Cindices)
         if (need_cal):
             end = perf_counter_ns()
             self.consum_time[0] += end-start
         random.seed(time.time_ns()%(2**32 - 1))
+        # random.seed(epoch + i_iter)
         # Losses
         for i, pi in enumerate(p):  # layer index, layer predictions
             rowlist = range(pi.shape[2])
@@ -178,9 +179,6 @@ class ComputeLoss:
             Bb, Ba, Bgj, Bgi = Bindices[i]  # image, anchor, gridy, gridx
             Cb, Ca, Cgj, Cgi = Cindices[i]  # image, anchor, gridy, gridx
             Db, Da, Dgj, Dgi = Dindices[i]  # image, anchor, gridy, gridx
-            if 0:
-                Cb_pad, Ca_pad, Cgj_pad, Cgi_pad = Cindices_padding[i]  # image, anchor, gridy, gridx
-                Db_pad, Da_pad, Dgj_pad, Dgi_pad = Dindices_padding[i]  # image, anchor, gridy, gridx
             
             Atobj = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)  # target obj
             Btobj = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)  # target obj
@@ -423,19 +421,66 @@ class ComputeLoss:
                 Dselect = torch.ones(pi.shape[:4], dtype=pi.dtype, device=self.device)
             
             
-            if 0:#想要屏蔽中途CD点的置信度损失，但是这个方案目前不合理，先关闭掉
+            zer = torch.zeros(1, device=self.device)
+            one = torch.ones(1, device=self.device)
+            Cobji_pad, Cxy_pad, Ccossin_pad, Clen_pad = zer, zer, zer, zer
+            Dobji_pad, Dxy_pad, Dcossin_pad, Dlen_pad = zer, zer, zer, zer
+            if 0: #(epoch>= epochs//2):
                 cotherconf = pi[..., 23].sigmoid()
                 dotherconf = pi[..., 29].sigmoid()
-                c_ingore_conf = cotherconf[Cb_pad, Ca_pad, Cgj_pad, Cgi_pad]>0.6
-                d_ingore_conf = dotherconf[Db_pad, Da_pad, Dgj_pad, Dgi_pad]>0.6
-                Cselect[Cb_pad[c_ingore_conf], Ca_pad[c_ingore_conf], Cgj_pad[c_ingore_conf], Cgi_pad[c_ingore_conf]] = 0
-                Dselect[Db_pad[d_ingore_conf], Da_pad[d_ingore_conf], Dgj_pad[d_ingore_conf], Dgi_pad[d_ingore_conf]] = 0
+                
+                Cb_pad, Ca_pad, Cgj_pad, Cgi_pad = Cindices_padding[i]  # image, anchor, gridy, gridx 
+                Db_pad, Da_pad, Dgj_pad, Dgi_pad = Dindices_padding[i]  # image, anchor, gridy, gridx
+                
+                
+                uni_Cb_pad, uni_Ca_pad, uni_Cgj_pad, uni_Cgi_pad = self.remove_duplicates(Cb_pad, Ca_pad, Cgj_pad, Cgi_pad)
+                uni_Db_pad, uni_Da_pad, uni_Dgj_pad, uni_Dgi_pad = self.remove_duplicates(Db_pad, Da_pad, Dgj_pad, Dgi_pad)
+                
+                
+                c_conf_pos = cotherconf[uni_Cb_pad, uni_Ca_pad, uni_Cgj_pad, uni_Cgi_pad]>0.6 #bool
+                d_conf_pos = dotherconf[uni_Db_pad, uni_Da_pad, uni_Dgj_pad, uni_Dgi_pad]>0.6 #bool
+                
+                
+                pos_uni_Cb_pad, pos_uni_Ca_pad, pos_uni_Cgj_pad, pos_uni_Cgi_pad = uni_Cb_pad[c_conf_pos], uni_Ca_pad[c_conf_pos], uni_Cgj_pad[c_conf_pos], uni_Cgi_pad[c_conf_pos]
+                pos_uni_Db_pad, pos_uni_Da_pad, pos_uni_Dgj_pad, pos_uni_Dgi_pad = uni_Db_pad[d_conf_pos], uni_Da_pad[d_conf_pos], uni_Dgj_pad[d_conf_pos], uni_Dgi_pad[d_conf_pos]
+                
+                
+                for k in range(pos_uni_Cb_pad.shape[0]):
+                    one_pos_uni_Cb_pad, one_pos_uni_Ca_pad, one_pos_uni_Cgj_pad, one_pos_uni_Cgi_pad = pos_uni_Cb_pad[k], pos_uni_Ca_pad[k], pos_uni_Cgj_pad[k], pos_uni_Cgi_pad[k]
+                    boolselect = torch.logical_and(torch.logical_and(Cb_pad==one_pos_uni_Cb_pad , Ca_pad==one_pos_uni_Ca_pad),
+                                                   torch.logical_and( Cgj_pad==one_pos_uni_Cgj_pad , Cgi_pad==one_pos_uni_Cgi_pad))
+                    pre_pos_mutil_gt = Ctbox_pdding[boolselect] #x,y cos,sin,len
+                    
+                    dis = torch.sqrt(torch.pow(pi[one_pos_uni_Cb_pad, one_pos_uni_Ca_pad, one_pos_uni_Cgj_pad, one_pos_uni_Cgi_pad,18].sigmoid() -  pre_pos_mutil_gt[:,0],2)
+                                   + torch.pow(pi[one_pos_uni_Cb_pad, one_pos_uni_Ca_pad, one_pos_uni_Cgj_pad, one_pos_uni_Cgi_pad,19].sigmoid() -  pre_pos_mutil_gt[:,1],2))
+                    _,indices = torch.min(dis, dim=0)
+                    
+                    Cobji_pad += self.MSEmean(cotherconf[one_pos_uni_Cb_pad, one_pos_uni_Ca_pad, one_pos_uni_Cgj_pad, one_pos_uni_Cgi_pad],  one)
+                    Cxy_pad += self.MSEmean(pi[one_pos_uni_Cb_pad, one_pos_uni_Ca_pad, one_pos_uni_Cgj_pad, one_pos_uni_Cgi_pad,18:20].sigmoid(),  pre_pos_mutil_gt[indices,0:2])
+                    Ccossin_pad += self.MSEmean(pi[one_pos_uni_Cb_pad, one_pos_uni_Ca_pad, one_pos_uni_Cgj_pad, one_pos_uni_Cgi_pad,20:22].sigmoid(),  pre_pos_mutil_gt[indices,2:4])
+                    Clen_pad += self.MSEmean(pi[one_pos_uni_Cb_pad, one_pos_uni_Ca_pad, one_pos_uni_Cgj_pad, one_pos_uni_Cgi_pad,22].sigmoid(),  pre_pos_mutil_gt[indices,4])
+                
+                for k in range(pos_uni_Db_pad.shape[0]):
+                    one_pos_uni_Db_pad, one_pos_uni_Da_pad, one_pos_uni_Dgj_pad, one_pos_uni_Dgi_pad = pos_uni_Db_pad[k], pos_uni_Da_pad[k], pos_uni_Dgj_pad[k], pos_uni_Dgi_pad[k]
+                    boolselect = torch.logical_and(torch.logical_and(Db_pad==one_pos_uni_Db_pad , Da_pad==one_pos_uni_Da_pad),
+                                                   torch.logical_and(Dgj_pad==one_pos_uni_Dgj_pad , Dgi_pad==one_pos_uni_Dgi_pad))
+                    pre_pos_mutil_gt = Dtbox_padding[boolselect] #x,y cos,sin,len
+                    
+                    dis = torch.sqrt(torch.pow(pi[one_pos_uni_Db_pad, one_pos_uni_Da_pad, one_pos_uni_Dgj_pad, one_pos_uni_Dgi_pad,24].sigmoid() -  pre_pos_mutil_gt[:,0],2)
+                                   + torch.pow(pi[one_pos_uni_Db_pad, one_pos_uni_Da_pad, one_pos_uni_Dgj_pad, one_pos_uni_Dgi_pad,25].sigmoid() -  pre_pos_mutil_gt[:,1],2))
+                    _,indices = torch.min(dis, dim=0)
+                    
+                    Dobji_pad += self.MSEmean(cotherconf[one_pos_uni_Db_pad, one_pos_uni_Da_pad, one_pos_uni_Dgj_pad, one_pos_uni_Dgi_pad],  one)
+                    Dxy_pad += self.MSEmean(pi[one_pos_uni_Db_pad, one_pos_uni_Da_pad, one_pos_uni_Dgj_pad, one_pos_uni_Dgi_pad,24:26].sigmoid(),  pre_pos_mutil_gt[indices,0:2])
+                    Dcossin_pad += self.MSEmean(pi[one_pos_uni_Db_pad, one_pos_uni_Da_pad, one_pos_uni_Dgj_pad, one_pos_uni_Dgi_pad,26:28].sigmoid(),  pre_pos_mutil_gt[indices,2:4])
+                    Dlen_pad += self.MSEmean(pi[one_pos_uni_Db_pad, one_pos_uni_Da_pad, one_pos_uni_Dgj_pad, one_pos_uni_Dgi_pad,28].sigmoid(),  pre_pos_mutil_gt[indices,4])
 
-            
+                lbox += (Cxy_pad + Dxy_pad) * 1.5 + (Clen_pad + Dlen_pad) * 0.75 + (Ccossin_pad + Dcossin_pad) * 0.75
+                                        
             Aobji = torch.sum(self.MSEnone(pi[..., 7].sigmoid(),  Atobj) * Aselect) / torch.sum(Aselect)
             Bobji = torch.sum(self.MSEnone(pi[..., 15].sigmoid(), Btobj) * Bselect) / torch.sum(Bselect)
-            Cobji = torch.sum(self.MSEnone(pi[..., 23].sigmoid(), Ctobj) * Cselect) / torch.sum(Cselect)
-            Dobji = torch.sum(self.MSEnone(pi[..., 29].sigmoid(), Dtobj) * Dselect) / torch.sum(Dselect)
+            Cobji = torch.sum(self.MSEnone(pi[..., 23].sigmoid(), Ctobj) * Cselect) / torch.sum(Cselect) + Cobji_pad
+            Dobji = torch.sum(self.MSEnone(pi[..., 29].sigmoid(), Dtobj) * Dselect) / torch.sum(Dselect) + Dobji_pad
             
 
             # np.set_printoptions(threshold=np.inf)
@@ -476,6 +521,12 @@ class ComputeLoss:
             self.consum_time[3] += function_end_t - function_start_t
             
         return (lbox + lobj + lcls) * bs, torch.cat((lbox, lobj, lcls)).detach()
+    
+    def remove_duplicates(self, b_pad, a_pad, gj_pad, gi_pad):
+        tmp = torch.stack((b_pad, a_pad, gj_pad, gi_pad), dim=1) 
+        unique_b_pad_a_pad_gj_pad_gi_pad = torch.unique(tmp, dim=0)
+        uni_b_pad, uni_a_pad, uni_gj_pad, uni_gi_pad = unique_b_pad_a_pad_gj_pad_gi_pad.T
+        return uni_b_pad, uni_a_pad, uni_gj_pad, uni_gi_pad
     
     def get_cosume_time(self):
         print("cal loss use time disturb: ", [ele/1000000000.0 for ele in self.consum_time])
@@ -524,15 +575,52 @@ class ComputeLoss:
         if d0 > d1: 
             x = torch.linspace(ends[0, 0], ends[1, 0], d0+1, device = self.device, requires_grad=False )
             y = torch.round(torch.linspace(ends[0, 1], ends[1, 1], d0+1, device = self.device, requires_grad=False))
-            return torch.stack( (x.long(), y.long()), dim=1)
+            res = torch.stack( (x.long(), y.long()), dim=1)
         else:
             x = torch.round(torch.linspace(ends[0, 0], ends[1, 0], d1+1, device = self.device, requires_grad=False))
             y = torch.linspace(ends[0, 1], ends[1, 1], d1+1, device = self.device, requires_grad=False)
-            return torch.stack( (x.long(), y.long()), dim=1)
-      
+            res = torch.stack( (x.long(), y.long()), dim=1)
+            
+        got_padding = torch.zeros(res.shape[0], 3, device=self.device)
+        tea = torch.atan2(ends[1, 0] - ends[1, 1], ends[0, 0] - ends[0, 1])
+        got_padding[:,0] = torch.cos(tea)
+        got_padding[:,1] = torch.sin(tea)
+        got_padding[:,2] = torch.sqrt(  torch.pow(res[:,0] - ends[0, 0],2) +  torch.pow(res[:,1] - ends[0, 1],2) )
+        return res.to(self.device), got_padding.to(self.device)
 
+    
+    def get_padding_res(self, b, a, start_x, start_y, end_x, end_y, shape, offsets):
+        smp = torch.tensor([], device=self.device, dtype=torch.int64)          
+        padding_batch_idx, padding_anchor_idx, padding_j, padding_i, padding_got, padding_xy = smp,smp,smp,smp,smp,smp
+        for idx in range(b.shape[0]):
+            one_b, one_a, one_start_x, one_start_y, one_end_x, one_end_y = b[idx], a[idx], start_x[idx], start_y[idx], end_x[idx], end_y[idx]
+            tmp = torch.tensor([ [ one_start_x.long(), one_start_y.long() ],
+                                 [ one_end_x.long(),   one_end_y.long()   ]])
+            mid_pts, mid_got = self.connect_torch(tmp)
+            upsample = 640//shape[3]
+            mid_pts, mid_got = mid_pts[upsample:-upsample,:], mid_got[upsample:-upsample,:]
+            
+            #x&y: bachnorm_output_shape, len: batchorm_1
+            mid_pts = mid_pts/torch.tensor([640,640],device=self.device)*torch.tensor([shape[3],shape[2]],device=self.device) #澶氳锛?鍒?
+            mid_got[:,2] = mid_got[:,2]/640
+            
+            one_b = one_b.repeat(mid_pts.shape[0])
+            one_a = one_a.repeat(mid_pts.shape[0])
+            
+            mid_ijs = (mid_pts - offsets).long()
+            mid_xy = mid_pts - mid_ijs
+            mid_i, mid_j = mid_ijs.T  # grid indices  #锛堝琛岋紝2鍒楋級---->锛?琛岋紝澶氬垪锛?-->涓€缁村拰涓€缁?
+            
+            padding_batch_idx = torch.cat((padding_batch_idx, one_b), 0)
+            padding_anchor_idx = torch.cat((padding_anchor_idx, one_a), 0)
+            padding_j = torch.cat((padding_j, mid_j.clamp_(0, shape[2] - 1)), 0)
+            padding_i = torch.cat((padding_i, mid_i.clamp_(0, shape[3] - 1)), 0)
+            padding_got = torch.cat((padding_got, mid_got), 0)   
+            padding_xy = torch.cat((padding_xy, mid_xy), 0)  
+        return padding_batch_idx, padding_anchor_idx, padding_j, padding_i, padding_got, padding_xy
+    
         
-    def build_targets(self, p, targets):   
+    def build_targets(self, p, targets, epoch, epochs):   
         #translation
         #                        A       B       C     D
         #           0      1   2   3   4   5   6   7  8  9
@@ -591,7 +679,7 @@ class ComputeLoss:
         na, nt = self.na, targets.shape[0]  # number of anchors, targets
         tcls, Atbox, Btbox, Ctbox, Dtbox, Aindices, Bindices, Cindices, Dindices, anch = [], [], [], [], [], [], [], [], [], []
         
-        Cindices_padding, Dindices_padding = [], []
+        Ctbox_padding, Cindices_padding, Dtbox_padding, Dindices_padding = [], [], [], []
         
         # normalized to gridspace gain: 
         # img_id occupy Ax Ay c1 s1  leng c2 s2 && Bx By c1 s1 leng c2 s2 intersects Cx Cy CBc1 CBs1 CBleng Dx Dy DAc1 DAs1 DAleng arid
@@ -738,9 +826,7 @@ class ComputeLoss:
                 Dgij = (Dgxy - offsets).long()
                 Dgi, Dgj = Dgij.T  # grid indices
 
-                if 0:#想要屏蔽中途CD点的置信度损失，但是这个方案目前不合理，先关闭掉
-                    smp = torch.tensor([], device=self.device, dtype=torch.int64)    
-                    cc1,cc2,cc3,cc4 = smp,smp,smp,smp
+                if 0: #(epoch >= epochs//2):
                     tmp_Ax = tmp_Ax/shape[3]*640
                     tmp_Ay = tmp_Ay/shape[2]*640
                     tmp_Bx = tmp_Bx/shape[3]*640
@@ -749,45 +835,15 @@ class ComputeLoss:
                     tmp_Cy = tmp_Cy/shape[2]*640
                     tmp_Dx = tmp_Dx/shape[3]*640
                     tmp_Dy = tmp_Dy/shape[2]*640
-                    for idx in range(b.shape[0]):
-                        one_b, one_a, one_tmp_Bx, one_tmp_By, one_tmp_Cx, one_tmp_Cy = b[idx],a[idx],tmp_Bx[idx],tmp_By[idx],tmp_Cx[idx],tmp_Cy[idx]
-                        bx_by_cx_cy = torch.tensor([ [one_tmp_Bx.long(), one_tmp_By.long() ],
-                                                    [one_tmp_Cx.long(), one_tmp_Cy.long() ]])
-                        cptlist = self.connect_torch(bx_by_cx_cy).to(self.device)
-                        cptlist = cptlist/torch.tensor([640,640],device=self.device)*torch.tensor([shape[3],shape[2]],device=self.device)
-                        cptlist = (cptlist - offsets).long()
-                        cptlist = torch.unique(cptlist,dim=0)[1:-1,:] 
-                        
-                        one_b = one_b.repeat(cptlist.shape[0])
-                        one_a = one_a.repeat(cptlist.shape[0])
-                        cptlisti, cptlistj = cptlist.T  # grid indices
-                        
-                        cc1 = torch.cat((cc1, one_b), 0)
-                        cc2 = torch.cat((cc2, one_a), 0)
-                        cc3 = torch.cat((cc3, cptlistj.clamp_(0, shape[2] - 1)), 0)
-                        cc4 = torch.cat((cc4, cptlisti.clamp_(0, shape[3] - 1)), 0)   
-                    Cindices_padding.append((cc1,cc2,cc3,cc4)) 
                     
-                    dd1,dd2,dd3,dd4 = smp,smp,smp,smp
-                    for idx in range(b.shape[0]):
-                        one_b, one_a, one_tmp_Ax, one_tmp_Ay, one_tmp_Dx, one_tmp_Dy = b[idx],a[idx],tmp_Ax[idx],tmp_Ay[idx],tmp_Dx[idx],tmp_Dy[idx]
-                        ax_ay_dx_dy = torch.tensor([ [one_tmp_Ax.long(), one_tmp_Ay.long() ],
-                                                    [one_tmp_Dx.long(), one_tmp_Dy.long() ]])
-                        dptlist = self.connect_torch(ax_ay_dx_dy).to(self.device)
-                        dptlist = dptlist/torch.tensor([640,640],device=self.device)*torch.tensor([shape[3],shape[2]],device=self.device)
-                        dptlist = (dptlist - offsets).long()
-                        dptlist = torch.unique(dptlist,dim=0)[1:-1,:] 
-                        
-                        one_b = one_b.repeat(dptlist.shape[0])
-                        one_a = one_a.repeat(dptlist.shape[0])
-                        dptlisti, dptlistj = dptlist.T  # grid indices
-                        
-                        dd1 = torch.cat((dd1, one_b), 0)
-                        dd2 = torch.cat((dd2, one_a), 0)
-                        dd3 = torch.cat((dd3, dptlistj.clamp_(0, shape[2] - 1)), 0)
-                        dd4 = torch.cat((dd4, dptlisti.clamp_(0, shape[3] - 1)), 0)    
-                    Dindices_padding.append((dd1,dd2,dd3,dd4)) 
-                
+                    
+                    Cpadding_batch_idx, Cpadding_anchor_idx, Cpadding_j, Cpadding_i, Cpadding_got, Cpadding_xy = self.get_padding_res(b, a, tmp_Bx, tmp_By, tmp_Cx, tmp_Cy, shape, offsets)
+                    Cindices_padding.append((Cpadding_batch_idx, Cpadding_anchor_idx, Cpadding_j, Cpadding_i))
+                    Ctbox_padding.append(torch.cat((Cpadding_xy, Cpadding_got), 1))
+                    
+                    Dpadding_batch_idx, Dpadding_anchor_idx, Dpadding_j, Dpadding_i, Dpadding_got, Dpadding_xy = self.get_padding_res(b, a, tmp_Ax, tmp_Ay, tmp_Dx, tmp_Dy, shape, offsets)
+                    Dindices_padding.append((Dpadding_batch_idx, Dpadding_anchor_idx, Dpadding_j, Dpadding_i))
+                    Dtbox_padding.append(torch.cat((Dpadding_xy, Dpadding_got), 1))
                     
                 # Append
                 Aindices.append((b, a, Agj.clamp_(0, shape[2] - 1), Agi.clamp_(0, shape[3] - 1)))  # image, anchor, grid
@@ -813,7 +869,9 @@ class ComputeLoss:
         # print("Dtbox: ",Dtbox)
         # print("Dindices: ",Dindices)
         # print("anch: ",anch)
+        # print("Ctbox_padding: ",Ctbox_padding)
         # print("Cindices_padding: ",Cindices_padding)
+        # print("Dtbox_padding: ",Dtbox_padding)
         # print("Dindices_padding: ",Dindices_padding)
         # sys.exit()
-        return tcls, Atbox, Aindices, Btbox, Bindices, Ctbox, Cindices, Dtbox, Dindices, anch, Cindices_padding, Dindices_padding
+        return tcls, Atbox, Aindices, Btbox, Bindices, Ctbox, Cindices, Dtbox, Dindices, anch, Ctbox_padding, Cindices_padding, Dtbox_padding, Dindices_padding
