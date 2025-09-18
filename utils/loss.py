@@ -141,6 +141,7 @@ class ComputeLoss:
         self.MSEmean = MSEmean
         self.MSEobj = MSEobj
         self.MSEthetaAD = MSEthetaAD
+        self.focalmean = MSEmean #FocalLoss(nn.BCEWithLogitsLoss(reduction='mean'), gamma=5, alpha=0.9)
         self.na = m.na  # number of anchors
         self.nc = m.nc  # number of classes
         self.nl = m.nl  # number of layers
@@ -151,7 +152,7 @@ class ComputeLoss:
         self.polycar = Polygon(self.polycar).convex_hull
         self.consum_time=[0,0,0,0]
 
-    def __call__(self, p, targets, epoch=0, epochs=1200, i_iter=0):  # predictions, targets
+    def __call__(self, p, targets, epoch=0, epochs=1200, i_iter=0, RANK=-1):  # predictions, targets
         need_cal = epoch<=1
         if(i_iter==0 and need_cal):
             self.consum_time=[0,0,0,0]
@@ -169,10 +170,10 @@ class ComputeLoss:
         if (need_cal):
             end = perf_counter_ns()
             self.consum_time[0] += end-start
-        random.seed(time.time_ns()%(2**32 - 1))
-        # random.seed(epoch + i_iter)
+
         # Losses
-        for i, pi in enumerate(p):  # layer index, layer predictions
+        for i, pi in enumerate(p):  # layer index, layer predictions 这里只是对小中大三个图层进行剥离
+            
             rowlist = range(pi.shape[2])
             collist = range(pi.shape[3])
             Ab, Aa, Agj, Agi = Aindices[i]  # image, anchor, gridy, gridx
@@ -180,10 +181,10 @@ class ComputeLoss:
             Cb, Ca, Cgj, Cgi = Cindices[i]  # image, anchor, gridy, gridx
             Db, Da, Dgj, Dgi = Dindices[i]  # image, anchor, gridy, gridx
             
-            Atobj = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)  # target obj
-            Btobj = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)  # target obj
-            Ctobj = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)  # target obj
-            Dtobj = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)  # target obj
+            Atobj = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)+0.1  # target obj
+            Btobj = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)+0.1  # target obj
+            Ctobj = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)+0.1  # target obj
+            Dtobj = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)+0.1  # target obj
 
             #Atobj = torch.full_like(Atobj, self.cn, device=self.device)
             #Btobj = torch.full_like(Btobj, self.cn, device=self.device)
@@ -193,7 +194,7 @@ class ComputeLoss:
             nC = Cb.shape[0]
             nD = Db.shape[0]
             assert( (nA==nB) and (nA==nC) and (nA==nD) )
-            n = nA + nB  # number of targets
+            n = nA + nB + nC + nD  # number of targets
             if (need_cal):
                 start = perf_counter_ns()
             if n:
@@ -346,10 +347,10 @@ class ComputeLoss:
                 #    b, a, gj, gi, iou = b[j], a[j], gj[j], gi[j], iou[j]
                 #if self.gr < 1:
                 #    iou = (1.0 - self.gr) + self.gr * iou
-                Atobj[Ab, Aa, Agj, Agi] = 1  # iou ratio
-                Btobj[Bb, Ba, Bgj, Bgi] = 1  # iou ratio
-                Ctobj[Cb, Ca, Cgj, Cgi] = 1  # iou ratio
-                Dtobj[Db, Da, Dgj, Dgi] = 1  # iou ratio
+                Atobj[Ab, Aa, Agj, Agi] = 0.9  # iou ratio
+                Btobj[Bb, Ba, Bgj, Bgi] = 0.9  # iou ratio
+                Ctobj[Cb, Ca, Cgj, Cgi] = 0.9  # iou ratio
+                Dtobj[Db, Da, Dgj, Dgi] = 0.9  # iou ratio
                 
                 # Classification
                 if 0: #self.nc > 1:  # cls loss (only if multiple classes)
@@ -362,70 +363,13 @@ class ComputeLoss:
                 self.consum_time[1] += end-start
                 start = perf_counter_ns()
             
-            #每个图像的每层archor(实际上就一个archor)上必须有_baseline_neg个负样本
-            # pi.shape[:4] batchsize anchor_num outputbuffer_h outputbuffer_w
-            _baseline_neg = 20
-            _bs = pi.shape[0]
-            _as = pi.shape[1]
-
-            if nA:
-                Aselect = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device) #NCHW
-                batch_list = torch.arange(0, _bs).repeat(_baseline_neg*_as)
-                anchor_list = torch.arange(0, _as).repeat(_baseline_neg*_bs)
-                Aselect[batch_list, anchor_list, random.choices(rowlist, k = _baseline_neg*_as*_bs),random.choices(collist, k = _baseline_neg*_as*_bs)] = 1
-                
-                Aselect[Ab, Aa, Agj, Agi] = 1 
-                list1 = random.choices(rowlist, k = nA * hyp["NEG_POS_RATE"])
-                list2 = random.choices(collist, k = nA * hyp["NEG_POS_RATE"])
-                Aselect[Ab.repeat(hyp["NEG_POS_RATE"]), Aa.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1
-            else:
-                Aselect = torch.ones(pi.shape[:4], dtype=pi.dtype, device=self.device)
-            
-            if nB:
-                Bselect = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)
-                batch_list = torch.arange(0, _bs).repeat(_baseline_neg*_as)
-                anchor_list = torch.arange(0, _as).repeat(_baseline_neg*_bs)
-                Bselect[batch_list, anchor_list, random.choices(rowlist, k = _baseline_neg*_as*_bs), random.choices(collist, k = _baseline_neg*_as*_bs)] = 1
-                   
-                Bselect[Bb, Ba, Bgj, Bgi] = 1
-                list1 = random.choices(rowlist, k = nB * hyp["NEG_POS_RATE"])
-                list2 = random.choices(collist, k = nB * hyp["NEG_POS_RATE"])
-                Bselect[Bb.repeat(hyp["NEG_POS_RATE"]), Ba.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1 
-            else:
-                Bselect = torch.ones(pi.shape[:4], dtype=pi.dtype, device=self.device)
-            
-            if nC:
-                Cselect = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)
-                batch_list = torch.arange(0, _bs).repeat(_baseline_neg*_as)
-                anchor_list = torch.arange(0, _as).repeat(_baseline_neg*_bs)
-                Cselect[batch_list, anchor_list, random.choices(rowlist, k = _baseline_neg*_as*_bs), random.choices(collist, k = _baseline_neg*_as*_bs)] = 1
-                   
-                Cselect[Cb, Ca, Cgj, Cgi] = 1
-                list1 = random.choices(rowlist, k = nC * hyp["NEG_POS_RATE"])
-                list2 = random.choices(collist, k = nC * hyp["NEG_POS_RATE"])
-                Cselect[Cb.repeat(hyp["NEG_POS_RATE"]), Ca.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1      
-            else:
-                Cselect = torch.ones(pi.shape[:4], dtype=pi.dtype, device=self.device)
         
-            if nD:
-                Dselect = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)
-                batch_list = torch.arange(0, _bs).repeat(_baseline_neg*_as)
-                anchor_list = torch.arange(0, _as).repeat(_baseline_neg*_bs)
-                Dselect[batch_list, anchor_list, random.choices(rowlist, k = _baseline_neg*_as*_bs), random.choices(collist, k = _baseline_neg*_as*_bs)] = 1
-                   
-                Dselect[Db, Da, Dgj, Dgi] = 1
-                list1 = random.choices(rowlist, k = nD * hyp["NEG_POS_RATE"])
-                list2 = random.choices(collist, k = nD * hyp["NEG_POS_RATE"])
-                Dselect[Db.repeat(hyp["NEG_POS_RATE"]), Da.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1       
-            else:
-                Dselect = torch.ones(pi.shape[:4], dtype=pi.dtype, device=self.device)
-            
-            
             zer = torch.zeros(1, device=self.device)
             one = torch.ones(1, device=self.device)
             Cobji_pad, Cxy_pad, Ccossin_pad, Clen_pad = zer, zer, zer, zer
             Dobji_pad, Dxy_pad, Dcossin_pad, Dlen_pad = zer, zer, zer, zer
             if 0: #(epoch>= epochs//2):
+                
                 cotherconf = pi[..., 23].sigmoid()
                 dotherconf = pi[..., 29].sigmoid()
                 
@@ -476,13 +420,71 @@ class ComputeLoss:
                     Dlen_pad += self.MSEmean(pi[one_pos_uni_Db_pad, one_pos_uni_Da_pad, one_pos_uni_Dgj_pad, one_pos_uni_Dgi_pad,28].sigmoid(),  pre_pos_mutil_gt[indices,4])
 
                 lbox += (Cxy_pad + Dxy_pad) * 1.5 + (Clen_pad + Dlen_pad) * 0.75 + (Ccossin_pad + Dcossin_pad) * 0.75
-                                        
-            Aobji = torch.sum(self.MSEnone(pi[..., 7].sigmoid(),  Atobj) * Aselect) / torch.sum(Aselect)
-            Bobji = torch.sum(self.MSEnone(pi[..., 15].sigmoid(), Btobj) * Bselect) / torch.sum(Bselect)
-            Cobji = torch.sum(self.MSEnone(pi[..., 23].sigmoid(), Ctobj) * Cselect) / torch.sum(Cselect) + Cobji_pad
-            Dobji = torch.sum(self.MSEnone(pi[..., 29].sigmoid(), Dtobj) * Dselect) / torch.sum(Dselect) + Dobji_pad
+            
+            if(0):#OHEM or random select neg samples 
+                #每个图像的每层archor(实际上就一个archor)上必须有_baseline_neg个负样本
+                # pi.shape[:4] batchsize anchor_num outputbuffer_h outputbuffer_w
+                # random.seed(time.time_ns()%(2**32 - 1))
+                # random.seed(epoch + i_iter)
+                _baseline_neg = 20
+                _bs = pi.shape[0]
+                _as = pi.shape[1]
+
+                Aselect = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device) #NCHW
+                batch_list = torch.arange(0, _bs).repeat(_baseline_neg*_as)
+                anchor_list = torch.arange(0, _as).repeat(_baseline_neg*_bs)
+                Aselect[batch_list, anchor_list, random.choices(rowlist, k = _baseline_neg*_as*_bs),random.choices(collist, k = _baseline_neg*_as*_bs)] = 1
+                if nA:
+                    list1 = random.choices(rowlist, k = nA * hyp["NEG_POS_RATE"])
+                    list2 = random.choices(collist, k = nA * hyp["NEG_POS_RATE"])
+                    Aselect[Ab.repeat(hyp["NEG_POS_RATE"]), Aa.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1
+                    Aselect[Ab, Aa, Agj, Agi] = 1 #hyp["NEG_POS_RATE"] 
+
+
+                Bselect = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)
+                batch_list = torch.arange(0, _bs).repeat(_baseline_neg*_as)
+                anchor_list = torch.arange(0, _as).repeat(_baseline_neg*_bs)
+                Bselect[batch_list, anchor_list, random.choices(rowlist, k = _baseline_neg*_as*_bs), random.choices(collist, k = _baseline_neg*_as*_bs)] = 1
+                if nB:
+                    list1 = random.choices(rowlist, k = nB * hyp["NEG_POS_RATE"])
+                    list2 = random.choices(collist, k = nB * hyp["NEG_POS_RATE"])
+                    Bselect[Bb.repeat(hyp["NEG_POS_RATE"]), Ba.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1 
+                    Bselect[Bb, Ba, Bgj, Bgi] = 1 #hyp["NEG_POS_RATE"]
+                
+                
+                Cselect = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)
+                batch_list = torch.arange(0, _bs).repeat(_baseline_neg*_as)
+                anchor_list = torch.arange(0, _as).repeat(_baseline_neg*_bs)
+                Cselect[batch_list, anchor_list, random.choices(rowlist, k = _baseline_neg*_as*_bs), random.choices(collist, k = _baseline_neg*_as*_bs)] = 1
+                if nC:
+                    list1 = random.choices(rowlist, k = nC * hyp["NEG_POS_RATE"])
+                    list2 = random.choices(collist, k = nC * hyp["NEG_POS_RATE"])
+                    Cselect[Cb.repeat(hyp["NEG_POS_RATE"]), Ca.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1     
+                    Cselect[Cb, Ca, Cgj, Cgi] = 1 #hyp["NEG_POS_RATE"] 
             
 
+                Dselect = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)
+                batch_list = torch.arange(0, _bs).repeat(_baseline_neg*_as)
+                anchor_list = torch.arange(0, _as).repeat(_baseline_neg*_bs)
+                Dselect[batch_list, anchor_list, random.choices(rowlist, k = _baseline_neg*_as*_bs), random.choices(collist, k = _baseline_neg*_as*_bs)] = 1
+                if nD:
+                    list1 = random.choices(rowlist, k = nD * hyp["NEG_POS_RATE"])
+                    list2 = random.choices(collist, k = nD * hyp["NEG_POS_RATE"])
+                    Dselect[Db.repeat(hyp["NEG_POS_RATE"]), Da.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1
+                    Dselect[Db, Da, Dgj, Dgi] = 1 #hyp["NEG_POS_RATE"]                     
+                Aobji = torch.sum(self.MSEnone(pi[..., 7].sigmoid(),  Atobj) * Aselect) / torch.sum(Aselect)
+                Bobji = torch.sum(self.MSEnone(pi[..., 15].sigmoid(), Btobj) * Bselect) / torch.sum(Bselect)
+                Cobji = torch.sum(self.MSEnone(pi[..., 23].sigmoid(), Ctobj) * Cselect) / torch.sum(Cselect) + Cobji_pad
+                Dobji = torch.sum(self.MSEnone(pi[..., 29].sigmoid(), Dtobj) * Dselect) / torch.sum(Dselect) + Dobji_pad
+            else:
+                Aobji = self.focalmean(pi[..., 7].sigmoid(),   Atobj)*10
+                Bobji = self.focalmean(pi[..., 15].sigmoid(),  Btobj)*10
+                Cobji = self.focalmean(pi[..., 23].sigmoid(),  Ctobj)*10 + Cobji_pad
+                Dobji = self.focalmean(pi[..., 29].sigmoid(),  Dtobj)*10 + Dobji_pad
+            
+            #if(epoch%5==4 and i_iter%50==0 and RANK==0):
+            #    print(torch.sum(torch.round(pi[..., 7].sigmoid())).cpu(), "  ", torch.sum(torch.round(pi[..., 15].sigmoid())).cpu(), "  ", torch.sum(torch.round(pi[..., 23].sigmoid())).cpu(), "  ",torch.sum(torch.round(pi[..., 29].sigmoid())).cpu() )
+            
             # np.set_printoptions(threshold=np.inf)
             # pd.set_option('display.width', 300) # 设置字符显示宽度
             # pd.set_option('display.max_rows', None) # 设置显示最大行

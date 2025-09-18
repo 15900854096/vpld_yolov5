@@ -28,7 +28,7 @@ def draw_save(img,labels,address):
     
 
 cnt=0
-def batch_draw_save(imgs,labelses,RANK=-1):
+def batch_draw_save(imgs,labelses,RANK=-1,iter_=0):
     imgs = np.array(imgs)
     labelses = np.array(labelses)
     global cnt
@@ -37,7 +37,7 @@ def batch_draw_save(imgs,labelses,RANK=-1):
         img = img.transpose((1, 2, 0))
         idx = labelses[:,0] == i
         labels = labelses[idx]
-        draw_save(img,labels[:,1:], os.path.join(Path.cwd(), r"xuqing/flipud/%d_%06d.jpg"%(RANK,cnt)))
+        draw_save(img,labels[:,1:], os.path.join(Path.cwd(), r"xuqing/flipud/%d_%d_%06d.jpg"%(RANK,iter_,cnt)))
         cnt+=1
         if(cnt>200):
             sys.exit()

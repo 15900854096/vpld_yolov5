@@ -93,7 +93,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     w = save_dir / 'weights'  # weights dir
     (w.parent if evolve else w).mkdir(parents=True, exist_ok=True)  # make dir
     last, best = w / 'last.pt', w / 'best.pt'
-    txtlog = open( save_dir / 'log.txt', 'w' )
+    txtlog = open( save_dir / 'log.txt', 'a' )
+    weightslog = open( save_dir / 'weights.txt', 'a' )
     # Hyperparameters
     if isinstance(hyp, str):
         with open(hyp, errors='ignore') as f:
@@ -294,6 +295,15 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         callbacks.run('on_train_epoch_start')
         model.train()
 
+        if (epoch%50==1):
+            for k, v in model.named_parameters():
+                if(k=="module.model.23.cv3.conv.weight"):
+                    weightslog.writelines(('\n' + '%12s' + '%d' + '%11.4g' * 10)%(k,   RANK, *v.cpu().detach().numpy().reshape(-1)[0:10]))
+                if(k=="module.model.25.conv_neckC.1.bn.weight"):
+                    weightslog.writelines(('\n' + '%12s' + '%d' + '%11.4g' * 10)%(k,   RANK, *v.cpu().detach().numpy().reshape(-1)[0:10]))   
+                if(k=="module.model.25.conv_neckC.1.bn.running_mean"):
+                    weightslog.writelines(('\n' + '%12s' + '%d' + '%11.4g' * 10)%(k,   RANK, *v.cpu().detach().numpy().reshape(-1)[0:10]))           
+                weightslog.flush()
         # Update image weights (optional, single-GPU only)
         if opt.image_weights:
             cw = model.class_weights.cpu().numpy() * (1 - maps) ** 2 / nc  # class weights
@@ -319,7 +329,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             dataload_time, forward_time, cal_loss_time, backforward_time = 0, 0, 0, 0
             load_start_time = perf_counter_ns()
         for i, (imgs, targets, paths, _) in pbar:  # batch -------------------------------------------------------------
-            # batch_draw_save(imgs,targets,RANK)
+            # batch_draw_save(imgs,targets,RANK,i)
             # continue 
             if (epoch<=1):
                 load_end_time = perf_counter_ns()
@@ -356,7 +366,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                     end = perf_counter_ns()
                     forward_time = forward_time + end-start
                     start = perf_counter_ns()
-                loss, loss_items = compute_loss(pred, targets.to(device), epoch, epochs, i)  # loss scaled by batch_size
+                loss, loss_items = compute_loss(pred, targets.to(device), epoch, epochs, i, RANK)  # loss scaled by batch_size
                 if (epoch<=1):
                     end = perf_counter_ns()
                     cal_loss_time = cal_loss_time + end-start
@@ -416,7 +426,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             callbacks.run('on_train_epoch_end', epoch=epoch)
             ema.update_attr(model, include=['yaml', 'nc', 'hyp', 'names', 'stride', 'class_weights'])
             final_epoch = (epoch + 1 == epochs) or stopper.possible_stop
-            if ((not noval or final_epoch) and (epoch >= min(0.5*epochs, 500)) and (epoch%50000000 == 0)):  # Calculate mAP
+            if ((not noval or final_epoch) and (epoch >= min(0.5*epochs, 50)) and (epoch%50 == 0)):  # Calculate mAP
             #if ((not noval or final_epoch) and (epoch > min(0.5*epochs, 0)) and (epoch%1 == 0)):
                 results, maps, _ = validate.run(data_dict,
                                                 batch_size=batch_size // WORLD_SIZE,

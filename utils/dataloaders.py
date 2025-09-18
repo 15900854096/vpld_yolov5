@@ -701,7 +701,7 @@ class LoadImagesAndLabels(Dataset):
     def __getitem__(self, index):
         #function_start_t = perf_counter_ns()
         index = self.indices[index]  # linear, shuffled, or image_weights
-        random.seed(time.time_ns()%(2**32 - 1))
+        # random.seed(time.time_ns()%(2**32 - 1))
         hyp = self.hyp
         mosaic = False #self.mosaic and random.random() < hyp['mosaic']  change by xuqing, must not use masic
         if mosaic:

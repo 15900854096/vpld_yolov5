@@ -33,7 +33,9 @@ from utils.general import (LOGGER, ROOT, Profile, check_requirements, check_suff
 from utils.plots import Annotator, colors, save_one_box
 from utils.torch_utils import copy_attr, smart_inference_mode
 
-
+with open(ROOT / 'data/hyps/hyp.scratch-low.yaml', errors='ignore') as f:
+    hyp = yaml.safe_load(f)
+    
 def autopad(k, p=None, d=1):  # kernel, padding, dilation
     # Pad to 'same' shape outputs
     if d > 1:
@@ -87,26 +89,48 @@ class MergeDiffSizeBufferConv(nn.Module):
     def __init__(self, listch):
         super().__init__()
         c1,c2,c3 = listch
-        self.conv8to16 = nn.Conv2d(c1, c2, 3, 2, 1, groups=1, dilation=1, bias=True)
-        self.bn8to16 = nn.BatchNorm2d(c2)
-        self.act8to16 = nn.ReLU()
-        
-        self.conv32to16 = nn.ConvTranspose2d(c3,c2,kernel_size = 2, stride = 2,padding = 0) #DWConv(c2, c3)
-        self.bn32to16 = nn.BatchNorm2d(c2)
-        self.act32to16 = nn.ReLU()
-        
-        self.backbone8to16 = nn.Sequential(*(self.conv8to16,self.bn8to16,self.act8to16))
-        self.backbone32to16 = nn.Sequential(*(self.conv32to16,self.bn32to16,self.act32to16))
+        if (hyp["MergeDiffSizeBufferDownsamplingFactor"] == 16):#8,16,32倍下采样图融合输出位16倍下采样且通道数c2
+            self.conv8to16 = nn.Conv2d(c1, c2, 3, 2, 1, groups=1, dilation=1, bias=True)
+            self.bn8to16 = nn.BatchNorm2d(c2)
+            self.act8to16 = nn.ReLU()
+            
+            self.conv32to16 = nn.ConvTranspose2d(c3,c2,kernel_size = 2, stride = 2,padding = 0) #DWConv(c2, c3)
+            self.bn32to16 = nn.BatchNorm2d(c2)
+            self.act32to16 = nn.ReLU()
+            
+            self.backbone8to16 = nn.Sequential(*(self.conv8to16,self.bn8to16,self.act8to16))
+            self.backbone32to16 = nn.Sequential(*(self.conv32to16,self.bn32to16,self.act32to16))
+        else if(hyp["MergeDiffSizeBufferDownsamplingFactor"] == 32):#8,16,32倍下采样图融合输出位32倍下采样且通道数c2，这样可以均衡正负样本 比例类似于400:5
+            self.conv8to16 = Conv(c1,c2, 3, 2) 
+            self.conv16to32 = Conv(c2,c3, 3, 2) 
+            self.conv32to32 = Conv(c3,c2, 3, 1) 
+            
+            self.backbone8to16  = self.conv8to16
+            self.backbone16to32 = self.conv16to32
+            self.backbone32to32 = self.conv32to32
+        else if(hyp["MergeDiffSizeBufferDownsamplingFactor"] == 64):#8,16,32倍下采样图融合输出位64倍下采样且通道数c2，这样可以均衡正负样本 比例类似于100:5
+            self.conv8to16 = Conv(c1,c2, 3, 2) 
+            self.conv16to32 = Conv(c2,c3, 3, 2) 
+            self.conv32to32 = Conv(c3,c2, 3, 2) 
+            
+            self.backbone8to16  = self.conv8to16
+            self.backbone16to32 = self.conv16to32
+            self.backbone32to32 = self.conv32to32
     def forward(self, x):
         feat8, feat16, feat32 = x
-
-        temp1 = self.backbone8to16(feat8)
-        temp2 = torch.add(temp1,feat16) 
-        temp3 = self.backbone32to16(feat32)
-        res = torch.add(temp2,temp3)
-
+        if (hyp["MergeDiffSizeBufferDownsamplingFactor"] == 16):
+            temp1 = self.backbone8to16(feat8)
+            temp2 = torch.add(temp1,feat16) 
+            temp3 = self.backbone32to16(feat32)
+            res = torch.add(temp2,temp3)
+        else if(hyp["MergeDiffSizeBufferDownsamplingFactor"] == 32 or hyp["MergeDiffSizeBufferDownsamplingFactor"] == 64):
+            temp1 = self.backbone8to16(feat8)
+            temp2 = torch.add(temp1,feat16) 
+            temp3 = self.backbone16to32(temp2)
+            temp4 = torch.add(temp3,feat32)
+            res = self.backbone32to32(temp4)
         return res       
-       
+
 
 class DecoupConv(nn.Module):
     def __init__(self, c1, c2, clsnum, k=3, s=1):
@@ -120,8 +144,8 @@ class DecoupConv(nn.Module):
         halfchanel = int(c1/2)
         quarterchanel = int(c1/4)
 
-        bpuchanel = int(c1/8)
-        cpuchanel = int(c1/16)
+        bpuchanel = int(c1/8)*2
+        cpuchanel = int(c1/16)*2
 
         self.conv_neckA = nn.Sequential(Conv(c1, halfchanel, k, s), Conv(halfchanel, quarterchanel, k, s))
         self.conv_neckB = nn.Sequential(Conv(c1, halfchanel, k, s), Conv(halfchanel, quarterchanel, k, s))

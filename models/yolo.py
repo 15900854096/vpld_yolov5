@@ -222,7 +222,7 @@ class DetectionModel(BaseModel):
             self.yaml_file = Path(cfg).name
             with open(cfg, encoding='ascii', errors='ignore') as f:
                 self.yaml = yaml.safe_load(f)  # model dict
-        print("DetectionModel::self.yaml: ", self.yaml)
+        #print("DetectionModel::self.yaml: ", self.yaml)
         # Define model
         ch = self.yaml['ch'] = self.yaml.get('ch', ch)  # input channels
         if nc and nc != self.yaml['nc']:
@@ -391,7 +391,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         elif m is Concat:
             c2 = sum(ch[x] for x in f)
         # TODO: channel, gw, gd
-        elif m is MergeDiffSizeBufferConv:
+        elif m in {MergeDiffSizeBufferConv}:
             tempch = [ch[x] for x in f] #从from里面拿到他们的输出通道数，后面需要作为这里的输入通道数[128,256，512]
             _, c2, _ = tempch #代表网络输出通道数 输入通道数中间的那个是需要作为输出通道数的，即256
             args.append(tempch) #代表构造函数需要的形参 args起初为空list,现在里面放入了输入通道数[128,256，512]
