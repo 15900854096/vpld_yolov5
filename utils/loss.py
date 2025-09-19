@@ -421,7 +421,7 @@ class ComputeLoss:
 
                 lbox += (Cxy_pad + Dxy_pad) * 1.5 + (Clen_pad + Dlen_pad) * 0.75 + (Ccossin_pad + Dcossin_pad) * 0.75
             
-            if(0):#OHEM or random select neg samples 
+            if(hyp["MergeDiffSizeBufferDownsamplingFactor"] == 16):#OHEM or random select neg samples , for big buffer must use this select neg samples
                 #每个图像的每层archor(实际上就一个archor)上必须有_baseline_neg个负样本
                 # pi.shape[:4] batchsize anchor_num outputbuffer_h outputbuffer_w
                 # random.seed(time.time_ns()%(2**32 - 1))

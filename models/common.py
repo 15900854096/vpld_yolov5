@@ -32,7 +32,7 @@ from utils.general import (LOGGER, ROOT, Profile, check_requirements, check_suff
                            xyxy2xywh, yaml_load)
 from utils.plots import Annotator, colors, save_one_box
 from utils.torch_utils import copy_attr, smart_inference_mode
-
+import yaml
 with open(ROOT / 'data/hyps/hyp.scratch-low.yaml', errors='ignore') as f:
     hyp = yaml.safe_load(f)
     
@@ -100,7 +100,7 @@ class MergeDiffSizeBufferConv(nn.Module):
             
             self.backbone8to16 = nn.Sequential(*(self.conv8to16,self.bn8to16,self.act8to16))
             self.backbone32to16 = nn.Sequential(*(self.conv32to16,self.bn32to16,self.act32to16))
-        else if(hyp["MergeDiffSizeBufferDownsamplingFactor"] == 32):#8,16,32倍下采样图融合输出位32倍下采样且通道数c2，这样可以均衡正负样本 比例类似于400:5
+        elif(hyp["MergeDiffSizeBufferDownsamplingFactor"] == 32):#8,16,32倍下采样图融合输出位32倍下采样且通道数c2，这样可以均衡正负样本 比例类似于400:5
             self.conv8to16 = Conv(c1,c2, 3, 2) 
             self.conv16to32 = Conv(c2,c3, 3, 2) 
             self.conv32to32 = Conv(c3,c2, 3, 1) 
@@ -108,7 +108,7 @@ class MergeDiffSizeBufferConv(nn.Module):
             self.backbone8to16  = self.conv8to16
             self.backbone16to32 = self.conv16to32
             self.backbone32to32 = self.conv32to32
-        else if(hyp["MergeDiffSizeBufferDownsamplingFactor"] == 64):#8,16,32倍下采样图融合输出位64倍下采样且通道数c2，这样可以均衡正负样本 比例类似于100:5
+        elif(hyp["MergeDiffSizeBufferDownsamplingFactor"] == 64):#8,16,32倍下采样图融合输出位64倍下采样且通道数c2，这样可以均衡正负样本 比例类似于100:5
             self.conv8to16 = Conv(c1,c2, 3, 2) 
             self.conv16to32 = Conv(c2,c3, 3, 2) 
             self.conv32to32 = Conv(c3,c2, 3, 2) 
@@ -123,7 +123,7 @@ class MergeDiffSizeBufferConv(nn.Module):
             temp2 = torch.add(temp1,feat16) 
             temp3 = self.backbone32to16(feat32)
             res = torch.add(temp2,temp3)
-        else if(hyp["MergeDiffSizeBufferDownsamplingFactor"] == 32 or hyp["MergeDiffSizeBufferDownsamplingFactor"] == 64):
+        elif(hyp["MergeDiffSizeBufferDownsamplingFactor"] == 32 or hyp["MergeDiffSizeBufferDownsamplingFactor"] == 64):
             temp1 = self.backbone8to16(feat8)
             temp2 = torch.add(temp1,feat16) 
             temp3 = self.backbone16to32(temp2)
