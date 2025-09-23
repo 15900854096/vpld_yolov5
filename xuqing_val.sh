@@ -7,5 +7,4 @@ python ./val.py \
 --batch-size 40 \
 --conf-thres 0.45 \
 --iou-thres 0.2 \
---half \
 --verbose

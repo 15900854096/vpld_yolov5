@@ -5,6 +5,7 @@ Loss functions
 
 import torch
 import torch.nn as nn
+import torch.distributed as dist
 import sys
 import time
 import yaml
@@ -20,6 +21,7 @@ from time import perf_counter_ns
 from utils.metrics import bbox_iou, bbox_iou_cat_in_lot
 from utils.torch_utils import de_parallel
 from utils.general import default_vlot_depth, default_hlot_depth, default_hlot_min_width, base_image_size, PI
+from functools import reduce
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # YOLOv5 root directory
@@ -426,52 +428,128 @@ class ComputeLoss:
                 # pi.shape[:4] batchsize anchor_num outputbuffer_h outputbuffer_w
                 # random.seed(time.time_ns()%(2**32 - 1))
                 # random.seed(epoch + i_iter)
-                _baseline_neg = 20
+                    
                 _bs = pi.shape[0]
                 _as = pi.shape[1]
-
+                _h  = pi.shape[2]
+                _w  = pi.shape[3]
+                
                 Aselect = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device) #NCHW
-                batch_list = torch.arange(0, _bs).repeat(_baseline_neg*_as)
-                anchor_list = torch.arange(0, _as).repeat(_baseline_neg*_bs)
-                Aselect[batch_list, anchor_list, random.choices(rowlist, k = _baseline_neg*_as*_bs),random.choices(collist, k = _baseline_neg*_as*_bs)] = 1
-                if nA:
-                    list1 = random.choices(rowlist, k = nA * hyp["NEG_POS_RATE"])
-                    list2 = random.choices(collist, k = nA * hyp["NEG_POS_RATE"])
-                    Aselect[Ab.repeat(hyp["NEG_POS_RATE"]), Aa.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1
-                    Aselect[Ab, Aa, Agj, Agi] = 1 #hyp["NEG_POS_RATE"] 
-
-
                 Bselect = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)
-                batch_list = torch.arange(0, _bs).repeat(_baseline_neg*_as)
-                anchor_list = torch.arange(0, _as).repeat(_baseline_neg*_bs)
-                Bselect[batch_list, anchor_list, random.choices(rowlist, k = _baseline_neg*_as*_bs), random.choices(collist, k = _baseline_neg*_as*_bs)] = 1
-                if nB:
-                    list1 = random.choices(rowlist, k = nB * hyp["NEG_POS_RATE"])
-                    list2 = random.choices(collist, k = nB * hyp["NEG_POS_RATE"])
-                    Bselect[Bb.repeat(hyp["NEG_POS_RATE"]), Ba.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1 
-                    Bselect[Bb, Ba, Bgj, Bgi] = 1 #hyp["NEG_POS_RATE"]
-                
-                
                 Cselect = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)
-                batch_list = torch.arange(0, _bs).repeat(_baseline_neg*_as)
-                anchor_list = torch.arange(0, _as).repeat(_baseline_neg*_bs)
-                Cselect[batch_list, anchor_list, random.choices(rowlist, k = _baseline_neg*_as*_bs), random.choices(collist, k = _baseline_neg*_as*_bs)] = 1
-                if nC:
-                    list1 = random.choices(rowlist, k = nC * hyp["NEG_POS_RATE"])
-                    list2 = random.choices(collist, k = nC * hyp["NEG_POS_RATE"])
-                    Cselect[Cb.repeat(hyp["NEG_POS_RATE"]), Ca.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1     
-                    Cselect[Cb, Ca, Cgj, Cgi] = 1 #hyp["NEG_POS_RATE"] 
-            
-
                 Dselect = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)
-                batch_list = torch.arange(0, _bs).repeat(_baseline_neg*_as)
-                anchor_list = torch.arange(0, _as).repeat(_baseline_neg*_bs)
-                Dselect[batch_list, anchor_list, random.choices(rowlist, k = _baseline_neg*_as*_bs), random.choices(collist, k = _baseline_neg*_as*_bs)] = 1
-                if nD:
-                    list1 = random.choices(rowlist, k = nD * hyp["NEG_POS_RATE"])
-                    list2 = random.choices(collist, k = nD * hyp["NEG_POS_RATE"])
-                    Dselect[Db.repeat(hyp["NEG_POS_RATE"]), Da.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1
-                    Dselect[Db, Da, Dgj, Dgi] = 1 #hyp["NEG_POS_RATE"]                     
+                
+                if(epoch<=epochs*0.9):#RANDOM
+                    if(RANK!=-1): 
+                        _baseline_neg = 5
+                    else:
+                        _baseline_neg = 20
+                    batch_list = torch.arange(0, _bs).repeat(_baseline_neg*_as)
+                    anchor_list = torch.arange(0, _as).repeat(_baseline_neg*_bs)
+                    Aselect[batch_list, anchor_list, random.choices(rowlist, k = _baseline_neg*_as*_bs),random.choices(collist, k = _baseline_neg*_as*_bs)] = 1
+                    if nA:
+                        list1 = random.choices(rowlist, k = nA * hyp["NEG_POS_RATE"])
+                        list2 = random.choices(collist, k = nA * hyp["NEG_POS_RATE"])
+                        Aselect[Ab.repeat(hyp["NEG_POS_RATE"]), Aa.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1
+                        Aselect[Ab, Aa, Agj, Agi] = 1 #hyp["NEG_POS_RATE"] 
+
+                    batch_list = torch.arange(0, _bs).repeat(_baseline_neg*_as)
+                    anchor_list = torch.arange(0, _as).repeat(_baseline_neg*_bs)
+                    Bselect[batch_list, anchor_list, random.choices(rowlist, k = _baseline_neg*_as*_bs), random.choices(collist, k = _baseline_neg*_as*_bs)] = 1
+                    if nB:
+                        list1 = random.choices(rowlist, k = nB * hyp["NEG_POS_RATE"])
+                        list2 = random.choices(collist, k = nB * hyp["NEG_POS_RATE"])
+                        Bselect[Bb.repeat(hyp["NEG_POS_RATE"]), Ba.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1 
+                        Bselect[Bb, Ba, Bgj, Bgi] = 1 #hyp["NEG_POS_RATE"]    
+                    
+                    batch_list = torch.arange(0, _bs).repeat(_baseline_neg*_as)
+                    anchor_list = torch.arange(0, _as).repeat(_baseline_neg*_bs)
+                    Cselect[batch_list, anchor_list, random.choices(rowlist, k = _baseline_neg*_as*_bs), random.choices(collist, k = _baseline_neg*_as*_bs)] = 1
+                    if nC:
+                        list1 = random.choices(rowlist, k = nC * hyp["NEG_POS_RATE"])
+                        list2 = random.choices(collist, k = nC * hyp["NEG_POS_RATE"])
+                        Cselect[Cb.repeat(hyp["NEG_POS_RATE"]), Ca.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1     
+                        Cselect[Cb, Ca, Cgj, Cgi] = 1 #hyp["NEG_POS_RATE"] 
+                
+                    batch_list = torch.arange(0, _bs).repeat(_baseline_neg*_as)
+                    anchor_list = torch.arange(0, _as).repeat(_baseline_neg*_bs)
+                    Dselect[batch_list, anchor_list, random.choices(rowlist, k = _baseline_neg*_as*_bs), random.choices(collist, k = _baseline_neg*_as*_bs)] = 1
+                    if nD:
+                        list1 = random.choices(rowlist, k = nD * hyp["NEG_POS_RATE"])
+                        list2 = random.choices(collist, k = nD * hyp["NEG_POS_RATE"])
+                        Dselect[Db.repeat(hyp["NEG_POS_RATE"]), Da.repeat(hyp["NEG_POS_RATE"]), list1, list2] = 1
+                        Dselect[Db, Da, Dgj, Dgi] = 1 #hyp["NEG_POS_RATE"]            
+            
+                else:#OHEM
+                    if(RANK!=-1): 
+                        _baseline_neg = 10
+                    else:
+                        _baseline_neg = 20
+                    _bsrepeat = torch.arange(_bs).repeat_interleave(_as*_baseline_neg)
+                    _asrepeat = torch.arange(_as).repeat(_bs).repeat_interleave(_baseline_neg)
+                    
+                    conftemp = pi[..., 7].sigmoid()
+                    conftemp = conftemp.reshape(_bs, _as, -1)
+                    idc = torch.sort(conftemp, -1, True).indices #降序排列, 挑选置信度最高的预测值
+                    idc = idc[:, :, :_baseline_neg]
+                    idcreshape = idc.reshape(-1)
+                    hlist = idcreshape//_w
+                    wlist = idcreshape%_w
+                    Aselect[_bsrepeat, _asrepeat, hlist, wlist] = 1
+                    Aselect[Ab, Aa, Agj, Agi] = 1    
+                    
+                    conftemp = pi[..., 15].sigmoid()
+                    conftemp = conftemp.reshape(_bs, _as, -1)
+                    idc = torch.sort(conftemp, -1, True).indices #降序排列, 挑选置信度最高的预测值
+                    idc = idc[:, :, :_baseline_neg]
+                    idcreshape = idc.reshape(-1)
+                    hlist = idcreshape//_w
+                    wlist = idcreshape%_w
+                    Bselect[_bsrepeat, _asrepeat, hlist, wlist] = 1
+                    Bselect[Bb, Ba, Bgj, Bgi] = 1 
+                    
+                    conftemp = pi[..., 23].sigmoid()
+                    conftemp = conftemp.reshape(_bs, _as, -1)
+                    idc = torch.sort(conftemp, -1, True).indices #降序排列, 挑选置信度最高的预测值
+                    idc = idc[:, :, :_baseline_neg]
+                    idcreshape = idc.reshape(-1)
+                    hlist = idcreshape//_w
+                    wlist = idcreshape%_w
+                    Cselect[_bsrepeat, _asrepeat, hlist, wlist] = 1
+                    Cselect[Cb, Ca, Cgj, Cgi] = 1 
+                    
+                    conftemp = pi[..., 29].sigmoid()
+                    conftemp = conftemp.reshape(_bs, _as, -1)
+                    idc = torch.sort(conftemp, -1, True).indices #降序排列, 挑选置信度最高的预测值
+                    idc = idc[:, :, :_baseline_neg]
+                    idcreshape = idc.reshape(-1)
+                    hlist = idcreshape//_w
+                    wlist = idcreshape%_w
+                    Dselect[_bsrepeat, _asrepeat, hlist, wlist] = 1
+                    Dselect[Db, Da, Dgj, Dgi] = 1 
+                    
+                if(RANK!=-1):    
+                    gathered_tensors = [torch.empty_like(Aselect, device=f"cuda:{RANK}") for _ in range(dist.get_world_size())]
+                    dist.all_gather(gathered_tensors, Aselect)
+                    Aselect = reduce(lambda a,b:torch.logical_or(a, b),gathered_tensors)
+                    
+                    gathered_tensors = [torch.empty_like(Bselect, device=f"cuda:{RANK}") for _ in range(dist.get_world_size())]
+                    dist.all_gather(gathered_tensors, Bselect)
+                    Bselect = reduce(lambda a,b:torch.logical_or(a, b),gathered_tensors)
+                    
+                    gathered_tensors = [torch.empty_like(Cselect, device=f"cuda:{RANK}") for _ in range(dist.get_world_size())]
+                    dist.all_gather(gathered_tensors, Cselect)
+                    Cselect = reduce(lambda a,b:torch.logical_or(a, b),gathered_tensors)
+                    
+                    gathered_tensors = [torch.empty_like(Dselect, device=f"cuda:{RANK}") for _ in range(dist.get_world_size())]
+                    dist.all_gather(gathered_tensors, Dselect)
+                    Dselect = reduce(lambda a,b:torch.logical_or(a, b),gathered_tensors)
+                    
+                    # if(epoch==30 and i_iter==10):                        
+                    #     df = pd.DataFrame(np.array(Aselect[0][0].cpu()))
+                    #     df.to_excel(r"%d.xlsx"%RANK, sheet_name="sheet1", index= False,encoding="utf-8")
+                    #     sys.exit()
+                            
                 Aobji = torch.sum(self.MSEnone(pi[..., 7].sigmoid(),  Atobj) * Aselect) / torch.sum(Aselect)
                 Bobji = torch.sum(self.MSEnone(pi[..., 15].sigmoid(), Btobj) * Bselect) / torch.sum(Bselect)
                 Cobji = torch.sum(self.MSEnone(pi[..., 23].sigmoid(), Ctobj) * Cselect) / torch.sum(Cselect) + Cobji_pad

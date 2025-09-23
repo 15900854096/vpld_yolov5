@@ -144,8 +144,8 @@ class DecoupConv(nn.Module):
         halfchanel = int(c1/2)
         quarterchanel = int(c1/4)
 
-        bpuchanel = int(c1/8)*2
-        cpuchanel = int(c1/16)*2
+        bpuchanel = int(c1/8)
+        cpuchanel = int(c1/16)
 
         self.conv_neckA = nn.Sequential(Conv(c1, halfchanel, k, s), Conv(halfchanel, quarterchanel, k, s))
         self.conv_neckB = nn.Sequential(Conv(c1, halfchanel, k, s), Conv(halfchanel, quarterchanel, k, s))
