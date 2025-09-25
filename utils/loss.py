@@ -439,14 +439,14 @@ class ComputeLoss:
                 Cselect = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)
                 Dselect = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)
                 
-                if(epoch<=epochs*0.9):#RANDOM
+                if(epoch<=epochs*0.8):#RANDOM
                     if(RANK!=-1): 
-                        _baseline_neg = 5
+                        _baseline_neg = 20
                     else:
                         _baseline_neg = 20
                     batch_list = torch.arange(0, _bs).repeat(_baseline_neg*_as)
                     anchor_list = torch.arange(0, _as).repeat(_baseline_neg*_bs)
-                    Aselect[batch_list, anchor_list, random.choices(rowlist, k = _baseline_neg*_as*_bs),random.choices(collist, k = _baseline_neg*_as*_bs)] = 1
+                    Aselect[batch_list, anchor_list, random.choices(rowlist, k = _baseline_neg*_as*_bs), random.choices(collist, k = _baseline_neg*_as*_bs)] = 1
                     if nA:
                         list1 = random.choices(rowlist, k = nA * hyp["NEG_POS_RATE"])
                         list2 = random.choices(collist, k = nA * hyp["NEG_POS_RATE"])
@@ -482,7 +482,7 @@ class ComputeLoss:
             
                 else:#OHEM
                     if(RANK!=-1): 
-                        _baseline_neg = 10
+                        _baseline_neg = 20
                     else:
                         _baseline_neg = 20
                     _bsrepeat = torch.arange(_bs).repeat_interleave(_as*_baseline_neg)
@@ -528,7 +528,7 @@ class ComputeLoss:
                     Dselect[_bsrepeat, _asrepeat, hlist, wlist] = 1
                     Dselect[Db, Da, Dgj, Dgi] = 1 
                     
-                if(RANK!=-1):    
+                if 0: #(RANK!=-1):    
                     gathered_tensors = [torch.empty_like(Aselect, device=f"cuda:{RANK}") for _ in range(dist.get_world_size())]
                     dist.all_gather(gathered_tensors, Aselect)
                     Aselect = reduce(lambda a,b:torch.logical_or(a, b),gathered_tensors)
