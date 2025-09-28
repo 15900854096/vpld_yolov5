@@ -164,9 +164,11 @@ class ComputeLoss:
         lbox = torch.zeros(1, device=self.device)  # box loss
         lobj = torch.zeros(1, device=self.device)  # object loss
         #tcls, tbox, indices, anchors = self.build_targets(p, targets)  # targets
+        
+        open_padding_str = False
         if (need_cal):
             start = perf_counter_ns()
-        tcls, Atbox, Aindices, Btbox, Bindices, Ctbox, Cindices, Dtbox, Dindices, anchors, Ctbox_pdding, Cindices_padding, Dtbox_padding, Dindices_padding = self.build_targets(p, targets, epoch, epochs)
+        tcls, Atbox, Aindices, Btbox, Bindices, Ctbox, Cindices, Dtbox, Dindices, anchors, Ctbox_pdding, Cindices_padding, Dtbox_padding, Dindices_padding = self.build_targets(p, targets, open_padding_str)
         # print("Ctbox: ",Ctbox)
         # print("Cindices: ",Cindices)
         if (need_cal):
@@ -367,10 +369,10 @@ class ComputeLoss:
             
         
             zer = torch.zeros(1, device=self.device)
-            one = torch.ones(1, device=self.device)
+            one = torch.zeros(1, device=self.device)+0.9
             Cobji_pad, Cxy_pad, Ccossin_pad, Clen_pad = zer, zer, zer, zer
             Dobji_pad, Dxy_pad, Dcossin_pad, Dlen_pad = zer, zer, zer, zer
-            if 0: #(epoch>= epochs//2):
+            if (open_padding_str):
                 
                 cotherconf = pi[..., 23].sigmoid()
                 dotherconf = pi[..., 29].sigmoid()
@@ -390,37 +392,57 @@ class ComputeLoss:
                 pos_uni_Cb_pad, pos_uni_Ca_pad, pos_uni_Cgj_pad, pos_uni_Cgi_pad = uni_Cb_pad[c_conf_pos], uni_Ca_pad[c_conf_pos], uni_Cgj_pad[c_conf_pos], uni_Cgi_pad[c_conf_pos]
                 pos_uni_Db_pad, pos_uni_Da_pad, pos_uni_Dgj_pad, pos_uni_Dgi_pad = uni_Db_pad[d_conf_pos], uni_Da_pad[d_conf_pos], uni_Dgj_pad[d_conf_pos], uni_Dgi_pad[d_conf_pos]
                 
-                
+                tmp1 = torch.tensor([],device=self.device)
+                tmp2 = torch.tensor([],device=self.device)
+                tmp3 = torch.tensor([],device=self.device)
                 for k in range(pos_uni_Cb_pad.shape[0]):
                     one_pos_uni_Cb_pad, one_pos_uni_Ca_pad, one_pos_uni_Cgj_pad, one_pos_uni_Cgi_pad = pos_uni_Cb_pad[k], pos_uni_Ca_pad[k], pos_uni_Cgj_pad[k], pos_uni_Cgi_pad[k]
                     boolselect = torch.logical_and(torch.logical_and(Cb_pad==one_pos_uni_Cb_pad , Ca_pad==one_pos_uni_Ca_pad),
                                                    torch.logical_and( Cgj_pad==one_pos_uni_Cgj_pad , Cgi_pad==one_pos_uni_Cgi_pad))
-                    pre_pos_mutil_gt = Ctbox_pdding[boolselect] #x,y cos,sin,len
+
+                    pre_pos_mutil_gt = Ctbox_pdding[i][boolselect] #x,y cos,sin,len
                     
                     dis = torch.sqrt(torch.pow(pi[one_pos_uni_Cb_pad, one_pos_uni_Ca_pad, one_pos_uni_Cgj_pad, one_pos_uni_Cgi_pad,18].sigmoid() -  pre_pos_mutil_gt[:,0],2)
                                    + torch.pow(pi[one_pos_uni_Cb_pad, one_pos_uni_Ca_pad, one_pos_uni_Cgj_pad, one_pos_uni_Cgi_pad,19].sigmoid() -  pre_pos_mutil_gt[:,1],2))
                     _,indices = torch.min(dis, dim=0)
                     
-                    Cobji_pad += self.MSEmean(cotherconf[one_pos_uni_Cb_pad, one_pos_uni_Ca_pad, one_pos_uni_Cgj_pad, one_pos_uni_Cgi_pad],  one)
-                    Cxy_pad += self.MSEmean(pi[one_pos_uni_Cb_pad, one_pos_uni_Ca_pad, one_pos_uni_Cgj_pad, one_pos_uni_Cgi_pad,18:20].sigmoid(),  pre_pos_mutil_gt[indices,0:2])
-                    Ccossin_pad += self.MSEmean(pi[one_pos_uni_Cb_pad, one_pos_uni_Ca_pad, one_pos_uni_Cgj_pad, one_pos_uni_Cgi_pad,20:22].sigmoid(),  pre_pos_mutil_gt[indices,2:4])
-                    Clen_pad += self.MSEmean(pi[one_pos_uni_Cb_pad, one_pos_uni_Ca_pad, one_pos_uni_Cgj_pad, one_pos_uni_Cgi_pad,22].sigmoid(),  pre_pos_mutil_gt[indices,4])
+                    #Cobji_pad += self.MSEmean(cotherconf[one_pos_uni_Cb_pad, one_pos_uni_Ca_pad, one_pos_uni_Cgj_pad, one_pos_uni_Cgi_pad],  one)
+                    # Cxy_pad += self.MSEmean(pi[one_pos_uni_Cb_pad, one_pos_uni_Ca_pad, one_pos_uni_Cgj_pad, one_pos_uni_Cgi_pad,18:20].sigmoid(),  pre_pos_mutil_gt[indices,0:2])/pos_uni_Cb_pad.shape[0]*2
+                    # Ccossin_pad += self.MSEmean(pi[one_pos_uni_Cb_pad, one_pos_uni_Ca_pad, one_pos_uni_Cgj_pad, one_pos_uni_Cgi_pad,20:22].sigmoid(),  pre_pos_mutil_gt[indices,2:4])/pos_uni_Cb_pad.shape[0]*2
+                    # Clen_pad += self.MSEmean(pi[one_pos_uni_Cb_pad, one_pos_uni_Ca_pad, one_pos_uni_Cgj_pad, one_pos_uni_Cgi_pad,22].sigmoid(),  pre_pos_mutil_gt[indices,4])/pos_uni_Cb_pad.shape[0]
+                    tmp1 = torch.cat((tmp1,pre_pos_mutil_gt[indices,0:2].unsqueeze(0)),0)
+                    tmp2 = torch.cat((tmp2,pre_pos_mutil_gt[indices,2:4].unsqueeze(0)),0)
+                    tmp3 = torch.cat((tmp3,pre_pos_mutil_gt[indices,4:5].unsqueeze(0)),0)
                 
+                Cxy_pad = self.MSEmean(pi[pos_uni_Cb_pad, pos_uni_Ca_pad, pos_uni_Cgj_pad, pos_uni_Cgi_pad,18:20].sigmoid(),  tmp1   )
+                Ccossin_pad = self.MSEmean(pi[pos_uni_Cb_pad, pos_uni_Ca_pad, pos_uni_Cgj_pad, pos_uni_Cgi_pad,20:22].sigmoid(),  tmp2   )
+                Clen_pad = self.MSEmean(pi[pos_uni_Cb_pad, pos_uni_Ca_pad, pos_uni_Cgj_pad, pos_uni_Cgi_pad,22:23].sigmoid(),  tmp3   )
+                     
+                
+                tmp1 = torch.tensor([],device=self.device)
+                tmp2 = torch.tensor([],device=self.device)
+                tmp3 = torch.tensor([],device=self.device)  
                 for k in range(pos_uni_Db_pad.shape[0]):
                     one_pos_uni_Db_pad, one_pos_uni_Da_pad, one_pos_uni_Dgj_pad, one_pos_uni_Dgi_pad = pos_uni_Db_pad[k], pos_uni_Da_pad[k], pos_uni_Dgj_pad[k], pos_uni_Dgi_pad[k]
                     boolselect = torch.logical_and(torch.logical_and(Db_pad==one_pos_uni_Db_pad , Da_pad==one_pos_uni_Da_pad),
                                                    torch.logical_and(Dgj_pad==one_pos_uni_Dgj_pad , Dgi_pad==one_pos_uni_Dgi_pad))
-                    pre_pos_mutil_gt = Dtbox_padding[boolselect] #x,y cos,sin,len
+                    pre_pos_mutil_gt = Dtbox_padding[i][boolselect] #x,y cos,sin,len
                     
                     dis = torch.sqrt(torch.pow(pi[one_pos_uni_Db_pad, one_pos_uni_Da_pad, one_pos_uni_Dgj_pad, one_pos_uni_Dgi_pad,24].sigmoid() -  pre_pos_mutil_gt[:,0],2)
                                    + torch.pow(pi[one_pos_uni_Db_pad, one_pos_uni_Da_pad, one_pos_uni_Dgj_pad, one_pos_uni_Dgi_pad,25].sigmoid() -  pre_pos_mutil_gt[:,1],2))
                     _,indices = torch.min(dis, dim=0)
                     
-                    Dobji_pad += self.MSEmean(cotherconf[one_pos_uni_Db_pad, one_pos_uni_Da_pad, one_pos_uni_Dgj_pad, one_pos_uni_Dgi_pad],  one)
-                    Dxy_pad += self.MSEmean(pi[one_pos_uni_Db_pad, one_pos_uni_Da_pad, one_pos_uni_Dgj_pad, one_pos_uni_Dgi_pad,24:26].sigmoid(),  pre_pos_mutil_gt[indices,0:2])
-                    Dcossin_pad += self.MSEmean(pi[one_pos_uni_Db_pad, one_pos_uni_Da_pad, one_pos_uni_Dgj_pad, one_pos_uni_Dgi_pad,26:28].sigmoid(),  pre_pos_mutil_gt[indices,2:4])
-                    Dlen_pad += self.MSEmean(pi[one_pos_uni_Db_pad, one_pos_uni_Da_pad, one_pos_uni_Dgj_pad, one_pos_uni_Dgi_pad,28].sigmoid(),  pre_pos_mutil_gt[indices,4])
-
+                    #Dobji_pad += self.MSEmean(cotherconf[one_pos_uni_Db_pad, one_pos_uni_Da_pad, one_pos_uni_Dgj_pad, one_pos_uni_Dgi_pad],  one)
+                    #Dxy_pad += self.MSEmean(pi[one_pos_uni_Db_pad, one_pos_uni_Da_pad, one_pos_uni_Dgj_pad, one_pos_uni_Dgi_pad,24:26].sigmoid(),  pre_pos_mutil_gt[indices,0:2])
+                    #Dcossin_pad += self.MSEmean(pi[one_pos_uni_Db_pad, one_pos_uni_Da_pad, one_pos_uni_Dgj_pad, one_pos_uni_Dgi_pad,26:28].sigmoid(),  pre_pos_mutil_gt[indices,2:4])
+                    #Dlen_pad += self.MSEmean(pi[one_pos_uni_Db_pad, one_pos_uni_Da_pad, one_pos_uni_Dgj_pad, one_pos_uni_Dgi_pad,28].sigmoid(),  pre_pos_mutil_gt[indices,4])
+                    tmp1 = torch.cat((tmp1,pre_pos_mutil_gt[indices,0:2].unsqueeze(0)),0)
+                    tmp2 = torch.cat((tmp2,pre_pos_mutil_gt[indices,2:4].unsqueeze(0)),0)
+                    tmp3 = torch.cat((tmp3,pre_pos_mutil_gt[indices,4:5].unsqueeze(0)),0)
+                Dxy_pad = self.MSEmean(pi[pos_uni_Db_pad, pos_uni_Da_pad, pos_uni_Dgj_pad, pos_uni_Dgi_pad,24:26].sigmoid(),  tmp1   )
+                Dcossin_pad = self.MSEmean(pi[pos_uni_Db_pad, pos_uni_Da_pad, pos_uni_Dgj_pad, pos_uni_Dgi_pad,26:28].sigmoid(),  tmp2   )
+                Dlen_pad = self.MSEmean(pi[pos_uni_Db_pad, pos_uni_Da_pad, pos_uni_Dgj_pad, pos_uni_Dgi_pad,28:29].sigmoid(),  tmp3   )
+                   
                 lbox += (Cxy_pad + Dxy_pad) * 1.5 + (Clen_pad + Dlen_pad) * 0.75 + (Ccossin_pad + Dcossin_pad) * 0.75
             
             if(hyp["MergeDiffSizeBufferDownsamplingFactor"] == 16):#OHEM or random select neg samples , for big buffer must use this select neg samples
@@ -439,7 +461,7 @@ class ComputeLoss:
                 Cselect = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)
                 Dselect = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)
                 
-                if(epoch<=epochs*0.8):#RANDOM
+                if(epoch<=epochs*0.7):#RANDOM
                     if(RANK!=-1): 
                         _baseline_neg = 20
                     else:
@@ -700,7 +722,7 @@ class ComputeLoss:
         return padding_batch_idx, padding_anchor_idx, padding_j, padding_i, padding_got, padding_xy
     
         
-    def build_targets(self, p, targets, epoch, epochs):   
+    def build_targets(self, p, targets, open_padding_str):   
         #translation
         #                        A       B       C     D
         #           0      1   2   3   4   5   6   7  8  9
@@ -906,7 +928,7 @@ class ComputeLoss:
                 Dgij = (Dgxy - offsets).long()
                 Dgi, Dgj = Dgij.T  # grid indices
 
-                if 0: #(epoch >= epochs//2):
+                if (open_padding_str):
                     tmp_Ax = tmp_Ax/shape[3]*640
                     tmp_Ay = tmp_Ay/shape[2]*640
                     tmp_Bx = tmp_Bx/shape[3]*640

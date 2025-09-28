@@ -1,5 +1,4 @@
 #sleep 7h
-#nice -n -20
 rm database_train*.cache
 python -m torch.distributed.run \
 --nproc_per_node 8 \
@@ -7,7 +6,7 @@ train.py  \
 --weights xuqing/yolov5s.pt  \
 --cfg ./xuqing/yolov5s_xuqing.yaml  \
 --data ./xuqing/VOC_xuqing.yaml  \
---name 20250921parkingDDP \
+--name 20250926parkingDDP \
 --device 0,1,2,3,4,5,6,7 \
 --imgsz 640 \
 --epoch 1500 \
@@ -16,7 +15,9 @@ train.py  \
 --noautoanchor \
 --patience 5000 \
 --workers 32 \
---sync-bn 
+--sync-bn \
+#--cache ram 
+#--resume
 #--freeze 25
 #--resume
 
