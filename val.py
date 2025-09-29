@@ -134,6 +134,7 @@ def run(
         compute_loss=None,
         txtlog=None
 ):
+    half = False
     # Initialize/load model and set device
     training = model is not None
     if training:  # called by train.py
@@ -214,7 +215,7 @@ def run(
             if cuda:
                 im = im.to(device, non_blocking=True)
                 targets = targets.to(device)
-            im = im.half() if half else im.float()  # uint8 to fp16/32
+            im = im.float() #im.half() if half else im.float()  # uint8 to fp16/32
             im /= 255  # 0 - 255 to 0.0 - 1.0
             nb, _, height, width = im.shape  # batch size, channels, height, width
 
@@ -470,6 +471,7 @@ def main(opt):
     else:
         weights = opt.weights if isinstance(opt.weights, list) else [opt.weights]
         opt.half = torch.cuda.is_available() and opt.device != 'cpu'  # FP16 for fastest results
+        opt.half = False
         if opt.task == 'speed':  # speed benchmarks
             # python val.py --task speed --data coco.yaml --batch 1 --weights yolov5n.pt yolov5s.pt...
             opt.conf_thres, opt.iou_thres, opt.save_json = 0.25, 0.45, False

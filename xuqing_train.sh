@@ -1,7 +1,10 @@
-#sleep 33h
-python train.py \
+#sleep 12h
+rm database_train*.cache
+python -m torch.distributed.run \
+--nproc_per_node 8 \
+train.py  \
 --weights xuqing/yolov5s.pt \
---name 20250905searching \
+--name 20250928searching \
 --cfg ./xuqing/yolov5s_xuqing.yaml  \
 --data ./xuqing/VOC_xuqing.yaml  \
 --device 0,1,2,3,4,5,6,7 \
@@ -10,10 +13,10 @@ python train.py \
 --batch-size 512 \
 --label-smoothing 0.2 \
 --noautoanchor \
---patience 10000000000 \
---workers 16 \
---sync-bn \
-#--resume
+--patience 500 \
+--workers 32 \
+--sync-bn 
+# --resume
 
 #--resume \
 # ./runs/train/exp53/weights/best.pt 
